@@ -193,13 +193,10 @@ curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5
 
 ### Node.js 應用程式
 
-如果遇到證書問題：
+如果使用 mkcert 生成的證書，通常不需要特殊配置。如果遇到證書問題：
 ```bash
-# 方法 1：忽略證書驗證（開發環境）
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-
-# 方法 2：信任 mkcert CA
-export NODE_EXTRA_CA_CERTS=/path/to/mkcert-ca.crt
+# 信任 mkcert CA
+export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
 ```
 
 ### Python 應用程式
@@ -336,7 +333,6 @@ services:
 ⚠️ **重要提醒**：
 - 這個設置僅適用於**開發環境**
 - 不要在生產環境使用自簽名證書
-- `NODE_TLS_REJECT_UNAUTHORIZED=0` 會禁用所有 SSL 驗證，請謹慎使用
 - 定期更新證書避免過期
 - 保護好你的 API 密鑰和認證 Token
 
