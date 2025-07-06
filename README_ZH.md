@@ -76,6 +76,7 @@ app/
 * **模型列表自动维护**: 支持openai和gemini模型列表获取，与newapi自动获取模型列表完美兼容，无需手动填写。
 * **支持移除不使用的模型**: 默认提供的模型太多，很多用不上，可以通过`FILTERED_MODELS`过滤掉。
 * **代理支持**: 支持配置 HTTP/SOCKS5 代理服务器 (`PROXIES`)，用于访问 Gemini API，方便在特殊网络环境下使用。支持批量添加代理。
+* **優化思考配置處理**: 智能處理思考配置 - 當 thinkingBudget 設為 0 時，會完全省略 thinkingConfig 以提高相容性。非思考模型會自動跳過思考配置。
 
 ## 🚀 快速开始
 
@@ -183,7 +184,7 @@ app/
 | `SHOW_SEARCH_LINK`           | 可选，是否在响应中显示搜索结果链接                             | `true`                                                |
 | `SHOW_THINKING_PROCESS`      | 可选，是否显示模型思考过程                                     | `true`                                                |
 | `THINKING_MODELS`            | 可选，支持思考功能的模型列表                                   | `[]`                                                  |
-| `THINKING_BUDGET_MAP`        | 可选，思考功能预算映射 (模型名:预算值)                         | `{}`                                                  |
+| `THINKING_BUDGET_MAP`        | 可选，思考功能预算映射 (模型名:预算值)。當預算為 0 時，會完全省略 thinkingConfig | `{}`                                                  |
 | `URL_NORMALIZATION_ENABLED`  | 可选，是否启用智能路由映射功能                                 | `false`                                               |
 | `BASE_URL`                   | 可选，Gemini API 基础 URL，默认无需修改                        | `https://generativelanguage.googleapis.com/v1beta`    |
 | `MAX_FAILURES`               | 可选，允许单个key失败的次数                                    | `3`                                                   |
@@ -230,6 +231,7 @@ app/
 * `GET /models`: 列出可用的 Gemini 模型。
 * `POST /models/{model_name}:generateContent`: 使用指定的 Gemini 模型生成内容。
 * `POST /models/{model_name}:streamGenerateContent`: 使用指定的 Gemini 模型流式生成内容。
+* `POST /models/{model_name}:countTokens`: 計算指定輸入在 Gemini 模型中的 token 數量。
 
 ### OpenAI API 相关
 

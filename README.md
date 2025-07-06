@@ -79,6 +79,7 @@ app/
 * **Automatic Model List Maintenance**: Supports fetching OpenAI and Gemini model lists, perfectly compatible with NewAPI's automatic model list fetching, no manual entry required.
 * **Support for Removing Unused Models**: Too many default models are provided, many of which are not used. You can filter them out using `FILTERED_MODELS`.
 * **Proxy Support**: Supports configuring HTTP/SOCKS5 proxy servers (`PROXIES`) for accessing the Gemini API, convenient for use in special network environments. Supports batch adding proxies.
+* **Optimized Thinking Configuration**: Intelligent handling of thinking configuration - when thinkingBudget is set to 0, the thinkingConfig is completely omitted for better compatibility. Non-thinking models automatically skip thinking configuration.
 
 ## 🚀 Quick Start
 
@@ -190,7 +191,7 @@ If you want to run the source code directly locally for development or testing, 
 | `SHOW_SEARCH_LINK`             | Optional, whether to display search result links in the response            | `true`                                                                                                                                                                                                                                   |
 | `SHOW_THINKING_PROCESS`        | Optional, whether to display the model's thinking process                   | `true`                                                                                                                                                                                                                                   |
 | `THINKING_MODELS`              | Optional, list of models that support thinking functions                    | `[]`                                                                                                                                                                                                                                     |
-| `THINKING_BUDGET_MAP`          | Optional, thinking function budget mapping (model_name:budget_value)        | `{}`                                                                                                                                                                                                                                     |
+| `THINKING_BUDGET_MAP`          | Optional, thinking function budget mapping (model_name:budget_value). When budget is 0, thinkingConfig will be omitted entirely | `{}`                                                                                                                                                                                                                                     |
 | `URL_NORMALIZATION_ENABLED`    | Optional, whether to enable intelligent URL routing mapping                 | `false`                                                                                                                                                                                                                                  |
 | `BASE_URL`                     | Optional, Gemini API base URL, no modification needed by default            | `https://generativelanguage.googleapis.com/v1beta`                                                                                                                                                                                       |
 | `MAX_FAILURES`                 | Optional, number of times a single key is allowed to fail                   | `3`                                                                                                                                                                                                                                      |
@@ -237,6 +238,7 @@ The following are the main API endpoints provided by the service:
 * `GET /models`: List available Gemini models.
 * `POST /models/{model_name}:generateContent`: Generate content using the specified Gemini model.
 * `POST /models/{model_name}:streamGenerateContent`: Stream content generation using the specified Gemini model.
+* `POST /models/{model_name}:countTokens`: Count tokens for the specified input using the Gemini model.
 
 ### OpenAI API Related
 
