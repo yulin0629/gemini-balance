@@ -2,12 +2,23 @@
 
 # Gemini Balance - Gemini API Proxy and Load Balancer
 
-> 📌 **About this project**: This is a fork of [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance). This fork version mainly includes the following adjustments for Taiwan users:
-> - Added Traditional Chinese documentation (README.md, README_zh-TW.md)
-> - Uses Taiwan's commonly used technical terminology
-> - Added [Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md) for convenient local development
+> 📌 **About this project**: This is a fork of [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance). This fork version has made the following enhancements and adjustments:
 > 
-> To view the original project or report issues, please visit the [original repository](https://github.com/snailyp/gemini-balance).
+> **🔧 New Features:**
+> - 📊 **countTokens API Support**: Added `/models/{model_name}:countTokens` endpoint to calculate token count before sending requests
+> - 🧠 **Optimized thinkingConfig Handling**: Smart handling of thinking configuration - automatically omits thinkingConfig when thinkingBudget is set to 0 for better compatibility
+> - 📝 **Complete Traditional Chinese Documentation**: Added README.md, README_zh-TW.md using Taiwan's commonly used technical terminology
+> - 🔀 **[Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md)**: Detailed instructions on setting up local reverse proxy to make applications use Gemini Balance through standard Google Gemini API endpoints
+> - 🛠️ **Local Development Optimization**: Complete local development environment setup guide including nginx configuration, SSL certificate generation, hosts configuration, etc.
+> 
+> **🚀 Enhancements:**
+> - ✅ Fixed configuration errors and security issues in original documentation
+> - ✅ Provided more comprehensive troubleshooting guide
+> - ✅ Added management scripts (toggle proxy, update port, complete removal)
+> - ✅ Support for mkcert certificate generation for more secure HTTPS setup
+> - ✅ Improved API compatibility for better support of various Gemini model features
+> 
+> To view the original project or report upstream issues, please visit the [original repository](https://github.com/snailyp/gemini-balance).
 
 <p align="center">
   <a href="https://trendshift.io/repositories/13692" target="_blank">
