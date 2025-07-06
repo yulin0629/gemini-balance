@@ -81,6 +81,10 @@ app/
 * **Proxy Support**: Supports configuring HTTP/SOCKS5 proxy servers (`PROXIES`) for accessing the Gemini API, convenient for use in special network environments. Supports batch adding proxies.
 * **Optimized Thinking Configuration**: Intelligent handling of thinking configuration - when thinkingBudget is set to 0, the thinkingConfig is completely omitted for better compatibility. Non-thinking models automatically skip thinking configuration.
 
+## 📖 Documentation
+
+* **[Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md)** - Learn how to set up a local reverse proxy to make applications think they're connecting to Google Gemini API while actually routing through Gemini Balance
+
 ## 🚀 Quick Start
 
 ### Build Docker Yourself (Recommended)

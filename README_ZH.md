@@ -78,6 +78,10 @@ app/
 * **代理支持**: 支持配置 HTTP/SOCKS5 代理服务器 (`PROXIES`)，用于访问 Gemini API，方便在特殊网络环境下使用。支持批量添加代理。
 * **優化思考配置處理**: 智能處理思考配置 - 當 thinkingBudget 設為 0 時，會完全省略 thinkingConfig 以提高相容性。非思考模型會自動跳過思考配置。
 
+## 📖 文檔
+
+* **[反向代理設置指南](gemini-balance-reverse-proxy-guide.md)** - 了解如何設置本地反向代理，讓應用程式以為在連接 Google Gemini API，但實際上請求會被轉發到 Gemini Balance 服務
+
 ## 🚀 快速开始
 
 ### 自行构建 Docker (推荐)
