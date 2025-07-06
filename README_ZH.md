@@ -1,3 +1,5 @@
+[正體中文版](README.md) | [Read this document in English](README_en.md)
+
 # Gemini Balance - Gemini API 代理和负载均衡器
 
 <p align="center">
