@@ -2,6 +2,13 @@
 
 # Gemini Balance - Gemini API 代理和负载均衡器
 
+> 📌 **关于本项目**：这是 Fork 自 [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance) 的项目。本 Fork 版本主要针对台湾用户进行了以下调整：
+> - 新增繁体中文文档（README.md、README_zh-TW.md）
+> - 使用台湾惯用的技术术语
+> - 新增[反向代理设置指南](gemini-balance-reverse-proxy-guide.md)，方便本地开发使用
+> 
+> 如需查看原始项目或报告问题，请前往[原始仓库](https://github.com/snailyp/gemini-balance)。
+
 <p align="center">
   <a href="https://trendshift.io/repositories/13692" target="_blank">
     <img src="https://trendshift.io/api/badge/repositories/13692" alt="snailyp%2Fgemini-balance | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
@@ -10,7 +17,7 @@
 
 > ⚠️ 本项目采用 CC BY-NC 4.0（署名-非商业性使用）协议，禁止任何形式的商业倒卖服务，详见 LICENSE 文件。
 
-> 本人从未在各个平台售卖服务，如有遇到售卖此服务者，那一定是倒卖狗，大家切记不要上当受骗。
+> 原作者声明：本人从未在各个平台售卖服务，如有遇到售卖此服务者，那一定是倒卖狗，大家切记不要上当受骗。
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-green.svg)](https://fastapi.tiangolo.com/)

@@ -2,6 +2,13 @@
 
 # Gemini Balance - Gemini API Proxy and Load Balancer
 
+> 📌 **About this project**: This is a fork of [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance). This fork version mainly includes the following adjustments for Taiwan users:
+> - Added Traditional Chinese documentation (README.md, README_zh-TW.md)
+> - Uses Taiwan's commonly used technical terminology
+> - Added [Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md) for convenient local development
+> 
+> To view the original project or report issues, please visit the [original repository](https://github.com/snailyp/gemini-balance).
+
 <p align="center">
   <a href="https://trendshift.io/repositories/13692" target="_blank">
     <img src="https://trendshift.io/api/badge/repositories/13692" alt="snailyp%2Fgemini-balance | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
@@ -10,7 +17,7 @@
 
 > ⚠️ This project is licensed under the CC BY-NC 4.0 (Attribution-NonCommercial) license. Any form of commercial resale service is prohibited. See the LICENSE file for details.
 
-> I have never sold this service on any platform. If you encounter someone selling this service, they are definitely a reseller. Please be careful not to be deceived.
+> Original author's statement: I have never sold this service on any platform. If you encounter someone selling this service, they are definitely a reseller. Please be careful not to be deceived.
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-green.svg)](https://fastapi.tiangolo.com/)
