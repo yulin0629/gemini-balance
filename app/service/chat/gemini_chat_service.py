@@ -86,11 +86,17 @@ def _build_payload(model: str, request: GeminiRequest) -> Dict[str, Any]:
             # 如果未指定最大输出长度，则不传递该字段，解决截断的问题
             request_dict["generationConfig"].pop("maxOutputTokens")
     
+    # 先複製 generationConfig，避免修改原始數據
+    generation_config = request_dict.get("generationConfig", {}).copy() if request_dict.get("generationConfig") else {}
+    
+    # 如果有 thinkingConfig，先移除，稍後再根據邏輯決定是否加回去
+    client_thinking_config = generation_config.pop("thinkingConfig", None)
+    
     payload = {
         "contents": request_dict.get("contents", []),
         "tools": _build_tools(model, request_dict),
         "safetySettings": _get_safety_settings(model),
-        "generationConfig": request_dict.get("generationConfig"),
+        "generationConfig": generation_config,
         "systemInstruction": request_dict.get("systemInstruction"),
     }
 
@@ -98,22 +104,38 @@ def _build_payload(model: str, request: GeminiRequest) -> Dict[str, Any]:
         payload.pop("systemInstruction")
         payload["generationConfig"]["responseModalities"] = ["Text", "Image"]
     
-    # 处理思考配置：优先使用客户端提供的配置，否则使用默认配置
-    client_thinking_config = None
-    if request.generationConfig and request.generationConfig.thinkingConfig:
-        client_thinking_config = request.generationConfig.thinkingConfig
-    
+    # 处理思考配置
     if client_thinking_config is not None:
-        # 客户端提供了思考配置，直接使用
-        payload["generationConfig"]["thinkingConfig"] = client_thinking_config
+        # 客户端提供了思考配置
+        thinking_budget = client_thinking_config.get("thinkingBudget", 0)
+        
+        # 如果 thinkingBudget 为 0，完全省略 thinkingConfig
+        if thinking_budget == 0:
+            logger.info(f"省略 thinkingConfig，因为 thinkingBudget 为 0 (model: {model})")
+            # 不设置 thinkingConfig，让模型使用默认行为
+        else:
+            # thinkingBudget > 0，使用客户端配置
+            payload["generationConfig"]["thinkingConfig"] = client_thinking_config
     else:
         # 客户端没有提供思考配置，使用默认配置    
         if model.endswith("-non-thinking"):
-            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0} 
+            # 对于明确的 non-thinking 模型，也不设置 thinkingConfig
+            pass
         elif model in settings.THINKING_BUDGET_MAP:
-            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": settings.THINKING_BUDGET_MAP.get(model,1000)}
+            budget = settings.THINKING_BUDGET_MAP.get(model, 1000)
+            if budget > 0:
+                payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": budget}
 
     return payload
+
+
+def _build_count_tokens_payload(request: GeminiRequest) -> Dict[str, Any]:
+    """為 countTokens API 構建簡化的 payload"""
+    request_dict = request.model_dump()
+    # countTokens 只需要 contents，可選 generateContentRequest
+    return {
+        "contents": request_dict.get("contents", [])
+    }
 
 
 class GeminiChatService:
@@ -285,3 +307,50 @@ class GeminiChatService:
                     latency_ms=latency_ms,
                     request_time=request_datetime
                 )
+
+    async def count_tokens(
+        self, model: str, request: GeminiRequest, api_key: str
+    ) -> Dict[str, Any]:
+        """計算 token 數量"""
+        payload = _build_count_tokens_payload(request)
+        start_time = time.perf_counter()
+        request_datetime = datetime.datetime.now()
+        is_success = False
+        status_code = None
+        response = None
+
+        try:
+            response = await self.api_client.count_tokens(payload, model, api_key)
+            is_success = True
+            status_code = 200
+            return response
+        except Exception as e:
+            is_success = False
+            error_log_msg = str(e)
+            logger.error(f"Count tokens API call failed with error: {error_log_msg}")
+            match = re.search(r"status code (\d+)", error_log_msg)
+            if match:
+                status_code = int(match.group(1))
+            else:
+                status_code = 500
+
+            await add_error_log(
+                gemini_key=api_key,
+                model_name=model,
+                error_type="gemini-count-tokens",
+                error_log=error_log_msg,
+                error_code=status_code,
+                request_msg=payload
+            )
+            raise e
+        finally:
+            end_time = time.perf_counter()
+            latency_ms = int((end_time - start_time) * 1000)
+            await add_request_log(
+                model_name=model,
+                api_key=api_key,
+                is_success=is_success,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                request_time=request_datetime
+            )

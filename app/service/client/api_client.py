@@ -21,6 +21,10 @@ class ApiClient(ABC):
     async def stream_generate_content(self, payload: Dict[str, Any], model: str, api_key: str) -> AsyncGenerator[str, None]:
         pass
 
+    @abstractmethod
+    async def count_tokens(self, payload: Dict[str, Any], model: str, api_key: str) -> Dict[str, Any]:
+        pass
+
 
 class GeminiApiClient(ApiClient):
     """Gemini API客户端"""
@@ -108,6 +112,26 @@ class GeminiApiClient(ApiClient):
                 async for line in response.aiter_lines():
                     yield line
 
+    async def count_tokens(self, payload: Dict[str, Any], model: str, api_key: str) -> Dict[str, Any]:
+        timeout = httpx.Timeout(self.timeout, read=self.timeout)
+        model = self._get_real_model(model)
+
+        proxy_to_use = None
+        if settings.PROXIES:
+            if settings.PROXIES_USE_CONSISTENCY_HASH_BY_API_KEY:
+                proxy_to_use = settings.PROXIES[hash(api_key) % len(settings.PROXIES)]
+            else:
+                proxy_to_use = random.choice(settings.PROXIES)
+            logger.info(f"Using proxy for count tokens: {proxy_to_use}")
+            
+        async with httpx.AsyncClient(timeout=timeout, proxy=proxy_to_use) as client:
+            url = f"{self.base_url}/models/{model}:countTokens?key={api_key}"
+            response = await client.post(url, json=payload)
+            if response.status_code != 200:
+                error_content = response.text
+                raise Exception(f"API call failed with status code {response.status_code}, {error_content}")
+            return response.json()
+
 
 class OpenaiApiClient(ApiClient):
     """OpenAI API客户端"""
@@ -176,6 +200,11 @@ class OpenaiApiClient(ApiClient):
                     raise Exception(f"API call failed with status code {response.status_code}, {error_msg}")
                 async for line in response.aiter_lines():
                     yield line
+    
+    async def count_tokens(self, payload: Dict[str, Any], model: str, api_key: str) -> Dict[str, Any]:
+        # OpenAI API doesn't have a direct count_tokens endpoint
+        # This is a placeholder implementation
+        raise NotImplementedError("OpenAI API doesn't support count_tokens endpoint")
     
     async def create_embeddings(self, input: str, model: str, api_key: str) -> Dict[str, Any]:
         timeout = httpx.Timeout(self.timeout, read=self.timeout)
