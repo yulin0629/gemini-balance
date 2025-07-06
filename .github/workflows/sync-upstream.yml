@@ -1,0 +1,87 @@
+name: 同步 Upstream
+
+on:
+  schedule:
+    # 每天 UTC 00:00 執行（台灣時間 08:00）
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 允許手動觸發
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 設定 Git 使用者
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 新增 upstream remote
+        run: |
+          git remote add upstream https://github.com/snailyp/gemini-balance.git || true
+          git remote -v
+
+      - name: 同步 upstream
+        id: sync
+        run: |
+          # Fetch upstream 更新
+          git fetch upstream
+          
+          # 切換到 main 分支
+          git checkout main
+          
+          # 嘗試合併 upstream/main
+          if git merge upstream/main --no-edit; then
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+            
+            # 推送更新
+            git push origin main
+            echo "✅ 成功同步 upstream 更新"
+          else
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+            echo "❌ 合併時發生衝突"
+            
+            # 中止合併
+            git merge --abort
+            exit 1
+          fi
+
+      - name: 建立衝突通知 Issue
+        if: failure() && steps.sync.outputs.merge_status == 'conflict'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueTitle = '⚠️ Upstream 同步失敗 - 合併衝突';
+            const issueBody = `在嘗試同步 upstream (snailyp/gemini-balance) 時發生合併衝突。
+            
+            請手動解決衝突：
+            
+            \`\`\`bash
+            git fetch upstream
+            git checkout main
+            git merge upstream/main
+            # 解決衝突後
+            git add .
+            git commit -m "解決與 upstream 的合併衝突"
+            git push origin main
+            \`\`\`
+            
+            時間：${new Date().toISOString()}
+            Workflow 運行：[${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['upstream-sync', 'merge-conflict']
+            });
