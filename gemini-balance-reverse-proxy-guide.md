@@ -89,6 +89,22 @@ mkcert generativelanguage.googleapis.com
 sudo mv generativelanguage.googleapis.com*.pem /etc/nginx/ssl/
 ```
 
+**重要：設置 Node.js 信任 mkcert CA**
+
+如果你使用基於 Node.js 的工具（如 gemini-cli，實際執行命令為 `gemini`），需要額外設置：
+
+```bash
+# 將 mkcert CA 路徑加入環境變數
+echo "export NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.bashrc
+echo "export NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.zshrc
+echo "set -x NODE_EXTRA_CA_CERTS \"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.config/fish/config.fish
+
+# 立即生效
+source ~/.bashrc  # 如果使用 bash
+source ~/.zshrc  # 如果使用 zsh
+source ~/.config/fish/config.fish  # 如果使用 fish
+```
+
 ### 4. 配置 Nginx
 
 創建配置文件時，記得替換端口號：
@@ -193,10 +209,15 @@ curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5
 
 ### Node.js 應用程式
 
-如果使用 mkcert 生成的證書，通常不需要特殊配置。如果遇到證書問題：
+如果使用 mkcert 生成的證書，需要設置 Node.js 信任 mkcert CA（參見上方「設置 Node.js 信任 mkcert CA」部分）。
+
+如果已經按照上述步驟設置但仍有問題，可以臨時使用：
 ```bash
-# 信任 mkcert CA
+# 臨時設置（僅當前會話）
 export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
+
+# 或者使用自簽名證書時的臨時解決方案（不推薦）
+NODE_TLS_REJECT_UNAUTHORIZED=0 gemini [你的命令]
 ```
 
 ### Python 應用程式
@@ -285,8 +306,24 @@ echo "代理已完全移除！"
 
 ## 疑難排解
 
+### 1. Node.js 應用程式 SSL 證書錯誤
 
-### 1. 連接被拒絕
+**問題**：`Error: self signed certificate` 或 `unable to verify the first certificate`
+
+**解決方案**：
+1. 確認已按照「設置 Node.js 信任 mkcert CA」步驟設置環境變數
+2. 檢查環境變數是否生效：
+   ```bash
+   echo $NODE_EXTRA_CA_CERTS
+   # 應該顯示類似：/home/username/.local/share/mkcert/rootCA.pem
+   ```
+3. 如果未生效，重新載入 shell 配置或開新終端
+4. 臨時解決方案（不推薦用於生產環境）：
+   ```bash
+   NODE_TLS_REJECT_UNAUTHORIZED=0 你的命令
+   ```
+
+### 2. 連接被拒絕
 
 **問題**：`Connection refused`
 
@@ -305,7 +342,7 @@ sudo systemctl status nginx
 grep generativelanguage.googleapis.com /etc/hosts
 ```
 
-### 2. 401 未授權
+### 3. 401 未授權
 
 **問題**：`Invalid key and missing x-goog-api-key header`
 
