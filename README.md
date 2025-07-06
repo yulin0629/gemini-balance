@@ -2,12 +2,23 @@
 
 # Gemini Balance - Gemini API 代理與負載平衡器
 
-> 📌 **關於本專案**：這是 Fork 自 [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance) 的專案。本 Fork 版本主要針對台灣用戶進行了以下調整：
-> - 新增繁體中文文件（README.md、README_zh-TW.md）
-> - 使用台灣慣用的技術術語
-> - 新增[反向代理設定指南](gemini-balance-reverse-proxy-guide.md)，方便本機開發使用
+> 📌 **關於本專案**：這是 Fork 自 [snailyp/gemini-balance](https://github.com/snailyp/gemini-balance) 的專案。本 Fork 版本主要進行了以下加強和調整：
 > 
-> 如需查看原始專案或回報問題，請前往[原始儲存庫](https://github.com/snailyp/gemini-balance)。
+> **🔧 新增功能：**
+> - 📊 **countTokens API 支援**：新增 `/models/{model_name}:countTokens` 端點，讓你可以在發送請求前計算 token 數量
+> - 🧠 **優化 thinkingConfig 處理**：智慧處理思考配置，當 thinkingBudget 設為 0 時自動省略 thinkingConfig，提高相容性
+> - 📝 **完整繁體中文文件**：新增 README.md、README_zh-TW.md，使用台灣慣用技術術語
+> - 🔀 **[反向代理設定指南](gemini-balance-reverse-proxy-guide.md)**：詳細說明如何設定本機反向代理，讓任何應用程式都能透過標準 Google Gemini API 端點使用 Gemini Balance
+> - 🛠️ **本機開發最佳化**：提供完整的本機開發環境設定說明，包含 nginx 設定、SSL 證書生成、hosts 設定等
+> 
+> **🚀 加強項目：**
+> - ✅ 修正原版文件中的配置錯誤和安全性問題
+> - ✅ 提供更完整的疑難排解指南
+> - ✅ 新增管理腳本（切換代理、更新端口、完整移除）
+> - ✅ 支援 mkcert 證書生成，提供更安全的 HTTPS 設定
+> - ✅ 改進 API 相容性，更好地支援各種 Gemini 模型功能
+> 
+> 如需查看原始專案或回報上游問題，請前往[原始儲存庫](https://github.com/snailyp/gemini-balance)。
 
 <p align="center">
   <a href="https://trendshift.io/repositories/13692" target="_blank">
