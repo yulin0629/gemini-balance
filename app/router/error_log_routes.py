@@ -398,6 +398,28 @@ async def delete_request_logs_bulk_api(
         )
 
 
+@router.delete("/requests/all", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_all_request_logs_api(request: Request):
+    """
+    删除所有请求日志 (异步)
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning("Unauthorized access attempt to delete all request logs")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+ 
+    try:
+        deleted_count = await error_log_service.process_delete_all_request_logs()
+        logger.info(f"Successfully deleted all {deleted_count} request logs.")
+        # No body needed for 204 response
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        logger.exception(f"Error deleting all request logs: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during deletion of all request logs"
+        )
+
+
 @router.delete("/requests/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_request_log_api(request: Request, log_id: int = Path(..., ge=1)):
     """
