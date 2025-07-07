@@ -1,4 +1,4 @@
-[正體中文版](README.md) | [简体中文版](README_ZH.md)
+[繁體中文](README_zh-TW.md) | [简体中文](README_ZH.md) | **English**
 
 # Gemini Balance - Gemini API Proxy and Load Balancer
 
@@ -125,10 +125,20 @@ app/
     * `-p 8000:8000`: Map port 8000 of the container to port 8000 of the host.
     * `--env-file .env`: Use the `.env` file to set environment variables.
 
+    > **Important**: If you're using a reverse proxy setup (see [Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md)), you must add DNS options to prevent DNS loop issues:
+    >
+    > ```bash
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 gemini-balance
+    > ```
+    >
+    > This ensures the container uses external DNS servers instead of inheriting the host's modified hosts file.
+
     > Note: If using an SQLite database, you need to mount a data volume to persist
 >
     > ```bash
     > docker run -d -p 8000:8000 --env-file .env -v /path/to/data:/app/data gemini-balance
+    > # Or with DNS for reverse proxy:
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 -v /path/to/data:/app/data gemini-balance
     > ```
 >
     > Where `/path/to/data` is the data storage path on the host, and `/app/data` is the data directory inside the container.
@@ -151,10 +161,18 @@ app/
     * `-p 8000:8000`: Map port 8000 of the container to port 8000 of the host (adjust as needed).
     * `--env-file .env`: Use the `.env` file to set environment variables (ensure the `.env` file exists in the directory where the command is executed).
 
+    > **Important**: If you're using a reverse proxy setup (see [Reverse Proxy Setup Guide](gemini-balance-reverse-proxy-guide.md)), add DNS options:
+    >
+    > ```bash
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 ghcr.io/snailyp/gemini-balance:latest
+    > ```
+
     > Note: If using an SQLite database, you need to mount a data volume to persist
 >
     > ```bash
     > docker run -d -p 8000:8000 --env-file .env -v /path/to/data:/app/data ghcr.io/snailyp/gemini-balance:latest
+    > # Or with DNS for reverse proxy:
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 -v /path/to/data:/app/data ghcr.io/snailyp/gemini-balance:latest
     > ```
 >
     > Where `/path/to/data` is the data storage path on the host, and `/app/data` is the data directory inside the container.

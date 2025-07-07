@@ -1,0 +1,58 @@
+# Docker Compose for Reverse Proxy Setup
+# 這個配置專門用於反向代理環境，避免 DNS 循環問題
+
+version: '3.8'
+
+services:
+  gemini-balance:
+    image: gemini-balance  # 使用本地構建的鏡像
+    # 如果要使用官方鏡像，取消下面這行的註釋並註釋上面那行
+    # image: ghcr.io/snailyp/gemini-balance:latest
+    container_name: gemini-balance
+    restart: unless-stopped
+    ports:
+      - "9527:8000"  # 主機端口:容器端口
+    dns:
+      # 重要：使用外部 DNS 服務器，避免容器使用主機的 hosts 文件
+      - 8.8.8.8      # Google DNS 主要
+      - 8.8.4.4      # Google DNS 備用
+      # 或使用其他公共 DNS
+      # - 1.1.1.1    # Cloudflare DNS
+      # - 1.0.0.1    # Cloudflare DNS 備用
+    env_file:
+      - .env
+    volumes:
+      # SQLite 數據庫持久化（如果使用 SQLite）
+      - ./data:/app/data
+      # 如果需要自定義配置文件
+      # - ./config:/app/config
+    # environment:
+    #   # 可以在這裡覆蓋 .env 中的設置
+    #   DATABASE_TYPE: sqlite
+    #   SQLITE_DATABASE: /app/data/gemini.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # 網絡設置（可選）
+    # networks:
+    #   - gemini-network
+
+# 如果需要自定義網絡
+# networks:
+#   gemini-network:
+#     driver: bridge
+
+# 使用說明：
+# 1. 確保 .env 文件存在並配置正確
+# 2. 如果使用本地構建的鏡像，先執行：docker build -t gemini-balance .
+# 3. 啟動服務：docker-compose -f docker-compose.reverse-proxy.yml up -d
+# 4. 查看日誌：docker-compose -f docker-compose.reverse-proxy.yml logs -f
+# 5. 停止服務：docker-compose -f docker-compose.reverse-proxy.yml down
+#
+# 重要提醒：
+# - 必須使用 dns 配置來避免 DNS 循環
+# - nginx/Caddy 代理應指向主機端口 9527
+# - 容器內部始終使用 8000 端口

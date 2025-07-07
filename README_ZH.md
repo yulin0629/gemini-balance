@@ -124,9 +124,19 @@ app/
     * `-p 8000:8000`: 将容器的 8000 端口映射到主机的 8000 端口。
     * `--env-file .env`: 使用 `.env` 文件设置环境变量。
 
+    > **重要**：如果你使用反向代理设置（请参阅[反向代理设置指南](gemini-balance-reverse-proxy-guide.md)），必须添加 DNS 选项以防止 DNS 循环问题：
+    >
+    > ```bash
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 gemini-balance
+    > ```
+    >
+    > 这确保容器使用外部 DNS 服务器，而不是继承主机修改过的 hosts 文件。
+
     > 注意：如果使用 SQLite 数据库，需要挂载数据卷以持久化数据：
     > ```bash
     > docker run -d -p 8000:8000 --env-file .env -v /path/to/data:/app/data gemini-balance
+    > # 或使用 DNS（用于反向代理）：
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 -v /path/to/data:/app/data gemini-balance
     > ```
     > 其中 `/path/to/data` 是主机上的数据存储路径，`/app/data` 是容器内的数据目录。
 
@@ -148,9 +158,17 @@ app/
    * `-p 8000:8000`: 将容器的 8000 端口映射到主机的 8000 端口 (根据需要调整)。
    * `--env-file .env`: 使用 `.env` 文件设置环境变量 (确保 `.env` 文件存在于执行命令的目录)。
 
+    > **重要**：如果你使用反向代理设置（请参阅[反向代理设置指南](gemini-balance-reverse-proxy-guide.md)），添加 DNS 选项：
+    >
+    > ```bash
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 ghcr.io/snailyp/gemini-balance:latest
+    > ```
+
     > 注意：如果使用 SQLite 数据库，需要挂载数据卷以持久化数据：
     > ```bash
     > docker run -d -p 8000:8000 --env-file .env -v /path/to/data:/app/data ghcr.io/snailyp/gemini-balance:latest
+    > # 或使用 DNS（用于反向代理）：
+    > docker run -d -p 8000:8000 --env-file .env --dns 8.8.8.8 --dns 8.8.4.4 -v /path/to/data:/app/data ghcr.io/snailyp/gemini-balance:latest
     > ```
     > 其中 `/path/to/data` 是主机上的数据存储路径，`/app/data` 是容器内的数据目录。
 
