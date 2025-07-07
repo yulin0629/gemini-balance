@@ -34,7 +34,9 @@ class RetryHandler:
                     key_manager = kwargs.get("key_manager")
                     if key_manager:
                         old_key = kwargs.get(self.key_arg)
-                        new_key = await key_manager.handle_api_failure(old_key, retries)
+                        # 嘗試從參數中獲取 model（支持 RPM）
+                        model = kwargs.get("model") or kwargs.get("model_name")
+                        new_key = await key_manager.handle_api_failure(old_key, retries, model)
                         if new_key:
                             kwargs[self.key_arg] = new_key
                             logger.info(f"Switched to new API key: {new_key}")

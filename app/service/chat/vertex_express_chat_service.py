@@ -252,7 +252,7 @@ class GeminiChatService:
                     request_msg=payload
                 )
 
-                api_key = await self.key_manager.handle_api_failure(current_attempt_key, retries)
+                api_key = await self.key_manager.handle_api_failure(current_attempt_key, retries, model)
                 if api_key:
                     logger.info(f"Switched to new API key: {api_key}")
                 else:
