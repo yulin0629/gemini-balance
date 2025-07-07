@@ -3,7 +3,7 @@
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import (
     APIRouter,
@@ -228,6 +228,198 @@ async def delete_error_log_api(request: Request, log_id: int = Path(..., ge=1)):
         raise http_exc
     except Exception as e:
         logger.exception(f"Error deleting error log with ID {log_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during deletion"
+        )
+
+
+# ===== Request Log Routes =====
+
+class RequestLogListItem(BaseModel):
+    id: int
+    request_time: Optional[datetime] = None
+    model_name: Optional[str] = None
+    api_key: Optional[str] = None
+    is_success: bool
+    status_code: Optional[int] = None
+    latency_ms: Optional[int] = None
+
+
+class RequestLogListResponse(BaseModel):
+    logs: List[RequestLogListItem]
+    total: int
+
+
+@router.get("/requests", response_model=RequestLogListResponse)
+async def get_request_logs_api(
+    request: Request,
+    limit: int = Query(10, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    model_search: Optional[str] = Query(
+        None, description="Search term for model name (partial match)"
+    ),
+    key_search: Optional[str] = Query(
+        None, description="Search term for API key (partial match)"
+    ),
+    success_filter: Optional[bool] = Query(
+        None, description="Filter by success status (true/false/null for all)"
+    ),
+    start_date: Optional[datetime] = Query(
+        None, description="Start datetime for filtering"
+    ),
+    end_date: Optional[datetime] = Query(
+        None, description="End datetime for filtering"
+    ),
+    sort_by: str = Query(
+        "id", description="Field to sort by (e.g., 'id', 'request_time', 'latency_ms')"
+    ),
+    sort_order: str = Query("desc", description="Sort order ('asc' or 'desc')"),
+):
+    """
+    获取请求日志列表，支持过滤和排序
+
+    Args:
+        request: 请求对象
+        limit: 限制数量
+        offset: 偏移量
+        model_search: 模型名称搜索
+        key_search: API密钥搜索
+        success_filter: 成功状态过滤
+        start_date: 开始日期
+        end_date: 结束日期
+        sort_by: 排序字段
+        sort_order: 排序顺序
+
+    Returns:
+        RequestLogListResponse: 包含请求日志列表和总数的响应对象
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning("Unauthorized access attempt to request logs list")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        result = await error_log_service.process_get_request_logs(
+            limit=limit,
+            offset=offset,
+            model_search=model_search,
+            key_search=key_search,
+            success_filter=success_filter,
+            start_date=start_date,
+            end_date=end_date,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        logs_data = result["logs"]
+        total_count = result["total"]
+
+        validated_logs = [RequestLogListItem(**log) for log in logs_data]
+        return RequestLogListResponse(logs=validated_logs, total=total_count)
+    except Exception as e:
+        logger.exception(f"Failed to get request logs list: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get request logs list: {str(e)}"
+        )
+
+
+class RequestLogDetailResponse(BaseModel):
+    id: int
+    request_time: Optional[datetime] = None
+    model_name: Optional[str] = None
+    api_key: Optional[str] = None
+    is_success: bool
+    status_code: Optional[int] = None
+    latency_ms: Optional[int] = None
+    request_body: Optional[Dict[str, Any]] = None
+    response_summary: Optional[str] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    error_message: Optional[str] = None
+
+
+@router.get("/requests/{log_id}/details", response_model=RequestLogDetailResponse)
+async def get_request_log_detail_api(request: Request, log_id: int = Path(..., ge=1)):
+    """
+    根据日志 ID 获取请求日志的详细信息
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning(
+            f"Unauthorized access attempt to request log details for ID: {log_id}"
+        )
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        log_details = await error_log_service.process_get_request_log_details(
+            log_id=log_id
+        )
+        if not log_details:
+            raise HTTPException(status_code=404, detail="Request log not found")
+
+        return RequestLogDetailResponse(**log_details)
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.exception(f"Failed to get request log details for ID {log_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get request log details: {str(e)}"
+        )
+
+
+@router.delete("/requests", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_request_logs_bulk_api(
+    request: Request, payload: Dict[str, List[int]] = Body(...)
+):
+    """
+    批量删除请求日志 (异步)
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning("Unauthorized access attempt to bulk delete request logs")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    log_ids = payload.get("ids")
+    if not log_ids:
+        raise HTTPException(status_code=400, detail="No log IDs provided for deletion.")
+
+    try:
+        deleted_count = await error_log_service.process_delete_request_logs_by_ids(
+            log_ids
+        )
+        logger.info(
+            f"Attempted bulk deletion for {deleted_count} request logs with IDs: {log_ids}"
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        logger.exception(f"Error bulk deleting request logs with IDs {log_ids}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during bulk deletion"
+        )
+
+
+@router.delete("/requests/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_request_log_api(request: Request, log_id: int = Path(..., ge=1)):
+    """
+    删除单个请求日志 (异步)
+    """
+    auth_token = request.cookies.get("auth_token")
+    if not auth_token or not verify_auth_token(auth_token):
+        logger.warning(f"Unauthorized access attempt to delete request log ID: {log_id}")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+ 
+    try:
+        success = await error_log_service.process_delete_request_log_by_id(log_id)
+        if not success:
+            raise HTTPException(
+                status_code=404, detail=f"Request log with ID {log_id} not found"
+            )
+        logger.info(f"Successfully deleted request log with ID: {log_id}")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.exception(f"Error deleting request log with ID {log_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail="Internal server error during deletion"
         )

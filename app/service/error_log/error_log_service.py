@@ -176,3 +176,94 @@ async def process_delete_all_error_logs() -> int:
             exc_info=True,
         )
         raise
+
+
+# ===== Request Log Service Functions =====
+
+async def process_get_request_logs(
+    limit: int,
+    offset: int,
+    model_search: Optional[str],
+    key_search: Optional[str],
+    success_filter: Optional[bool],
+    start_date: Optional[datetime],
+    end_date: Optional[datetime],
+    sort_by: str,
+    sort_order: str,
+) -> Dict[str, Any]:
+    """
+    处理请求日志的检索，支持分页和过滤。
+    """
+    try:
+        logs_data = await db_services.get_request_logs(
+            limit=limit,
+            offset=offset,
+            model_search=model_search,
+            key_search=key_search,
+            success_filter=success_filter,
+            start_date=start_date,
+            end_date=end_date,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        total_count = await db_services.get_request_logs_count(
+            model_search=model_search,
+            key_search=key_search,
+            success_filter=success_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return {"logs": logs_data, "total": total_count}
+    except Exception as e:
+        logger.error(f"Service error in process_get_request_logs: {e}", exc_info=True)
+        raise
+
+
+async def process_get_request_log_details(log_id: int) -> Optional[Dict[str, Any]]:
+    """
+    处理特定请求日志详细信息的检索。
+    如果未找到，则返回 None。
+    """
+    try:
+        log_details = await db_services.get_request_log_details(log_id=log_id)
+        return log_details
+    except Exception as e:
+        logger.error(
+            f"Service error in process_get_request_log_details for ID {log_id}: {e}",
+            exc_info=True,
+        )
+        raise
+
+
+async def process_delete_request_logs_by_ids(log_ids: List[int]) -> int:
+    """
+    按 ID 批量删除请求日志。
+    返回尝试删除的日志数量。
+    """
+    if not log_ids:
+        return 0
+    try:
+        deleted_count = await db_services.delete_request_logs_by_ids(log_ids)
+        return deleted_count
+    except Exception as e:
+        logger.error(
+            f"Service error in process_delete_request_logs_by_ids for IDs {log_ids}: {e}",
+            exc_info=True,
+        )
+        raise
+
+
+async def process_delete_request_log_by_id(log_id: int) -> bool:
+    """
+    按 ID 删除单个请求日志。
+    如果删除成功（或找到日志并尝试删除），则返回 True，否则返回 False。
+    """
+    try:
+        success = await db_services.delete_request_log_by_id(log_id)
+        return success
+    except Exception as e:
+        logger.error(
+            f"Service error in process_delete_request_log_by_id for ID {log_id}: {e}",
+            exc_info=True,
+        )
+        raise

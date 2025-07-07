@@ -8,6 +8,7 @@ COPY ./VERSION /app
 
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ./app /app/app
+COPY ./migrations /app/migrations
 ENV API_KEYS='["your_api_key_1"]'
 ENV ALLOWED_TOKENS='["your_token_1"]'
 ENV BASE_URL=https://generativelanguage.googleapis.com/v1beta
