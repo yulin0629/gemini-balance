@@ -60,15 +60,25 @@ def setup_page_routes(app: FastAPI) -> None:
         try:
             form = await request.form()
             auth_token = form.get("auth_token")
+            remember_me = form.get("remember_me") == "on"
+            
             if not auth_token:
                 logger.warning("Authentication attempt with empty token")
                 return RedirectResponse(url="/", status_code=302)
 
             if verify_auth_token(auth_token):
-                logger.info("Successful authentication")
+                logger.info(f"Successful authentication (remember_me: {remember_me})")
                 response = RedirectResponse(url="/config", status_code=302)
+                
+                # 如果勾選了「記住我」，設置 30 天有效期，否則設置 1 小時
+                max_age = 30 * 24 * 60 * 60 if remember_me else 3600  # 30 天或 1 小時
+                
                 response.set_cookie(
-                    key="auth_token", value=auth_token, httponly=True, max_age=3600
+                    key="auth_token", 
+                    value=auth_token, 
+                    httponly=True, 
+                    max_age=max_age,
+                    samesite="lax"  # 使用 lax 避免太嚴格
                 )
                 return response
             logger.warning("Failed authentication attempt with invalid token")
