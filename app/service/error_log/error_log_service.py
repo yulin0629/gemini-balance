@@ -267,3 +267,26 @@ async def process_delete_request_log_by_id(log_id: int) -> bool:
             exc_info=True,
         )
         raise
+
+
+async def process_delete_all_request_logs() -> int:
+    """
+    处理删除所有请求日志的请求。
+    返回删除的日志数量。
+    """
+    try:
+        if not database.is_connected:
+            await database.connect()
+            logger.info("Database connection established for deleting all request logs.")
+
+        deleted_count = await db_services.delete_all_request_logs()
+        logger.info(
+            f"Successfully processed request to delete all request logs. Count: {deleted_count}"
+        )
+        return deleted_count
+    except Exception as e:
+        logger.error(
+            f"Service error in process_delete_all_request_logs: {e}",
+            exc_info=True,
+        )
+        raise

@@ -395,7 +395,13 @@ async def add_request_log(
     is_success: bool,
     status_code: Optional[int] = None,
     latency_ms: Optional[int] = None,
-    request_time: Optional[datetime] = None
+    request_time: Optional[datetime] = None,
+    request_body: Optional[Dict[str, Any]] = None,
+    response_summary: Optional[str] = None,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+    total_tokens: Optional[int] = None,
+    error_message: Optional[str] = None
 ) -> bool:
     """
     添加 API 请求日志
@@ -407,6 +413,12 @@ async def add_request_log(
         status_code: API 响应状态码
         latency_ms: 请求耗时(毫秒)
         request_time: 请求发生时间 (如果为 None, 则使用当前时间)
+        request_body: 请求内容 (JSON)
+        response_summary: 响应摘要
+        prompt_tokens: 输入Token数
+        completion_tokens: 输出Token数
+        total_tokens: 总Token数
+        error_message: 错误信息
 
     Returns:
         bool: 是否添加成功
@@ -414,16 +426,241 @@ async def add_request_log(
     try:
         log_time = request_time if request_time else datetime.now()
 
-        query = insert(RequestLog).values(
-            request_time=log_time,
-            model_name=model_name,
-            api_key=api_key,
-            is_success=is_success,
-            status_code=status_code,
-            latency_ms=latency_ms
-        )
+        values = {
+            "request_time": log_time,
+            "model_name": model_name,
+            "api_key": api_key,
+            "is_success": is_success,
+            "status_code": status_code,
+            "latency_ms": latency_ms
+        }
+        
+        # 添加新欄位（只有非 None 的值）
+        if request_body is not None:
+            values["request_body"] = request_body
+        if response_summary is not None:
+            values["response_summary"] = response_summary
+        if prompt_tokens is not None:
+            values["prompt_tokens"] = prompt_tokens
+        if completion_tokens is not None:
+            values["completion_tokens"] = completion_tokens
+        if total_tokens is not None:
+            values["total_tokens"] = total_tokens
+        if error_message is not None:
+            values["error_message"] = error_message
+
+        query = insert(RequestLog).values(**values)
         await database.execute(query)
         return True
     except Exception as e:
         logger.error(f"Failed to add request log: {str(e)}")
         return False
+
+
+async def get_request_logs(
+    limit: int = 20,
+    offset: int = 0,
+    model_search: Optional[str] = None,
+    key_search: Optional[str] = None,
+    success_filter: Optional[bool] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    sort_by: str = 'id',
+    sort_order: str = 'desc'
+) -> List[Dict[str, Any]]:
+    """
+    获取请求日志，支持搜索、日期过滤和排序
+
+    Args:
+        limit (int): 限制数量
+        offset (int): 偏移量
+        model_search (Optional[str]): 模型名称搜索词 (模糊匹配)
+        key_search (Optional[str]): API密钥搜索词 (模糊匹配)
+        success_filter (Optional[bool]): 成功状态过滤 (True=只看成功, False=只看失败, None=全部)
+        start_date (Optional[datetime]): 开始日期时间
+        end_date (Optional[datetime]): 结束日期时间
+        sort_by (str): 排序字段 (例如 'id', 'request_time', 'latency_ms')
+        sort_order (str): 排序顺序 ('asc' or 'desc')
+
+    Returns:
+        List[Dict[str, Any]]: 请求日志列表
+    """
+    try:
+        query = select(
+            RequestLog.id,
+            RequestLog.request_time,
+            RequestLog.model_name,
+            RequestLog.api_key,
+            RequestLog.is_success,
+            RequestLog.status_code,
+            RequestLog.latency_ms,
+            RequestLog.request_body,
+            RequestLog.response_summary,
+            RequestLog.prompt_tokens,
+            RequestLog.completion_tokens,
+            RequestLog.total_tokens,
+            RequestLog.error_message
+        )
+        
+        if model_search:
+            query = query.where(RequestLog.model_name.ilike(f"%{model_search}%"))
+        if key_search:
+            query = query.where(RequestLog.api_key.ilike(f"%{key_search}%"))
+        if success_filter is not None:
+            query = query.where(RequestLog.is_success == success_filter)
+        if start_date:
+            query = query.where(RequestLog.request_time >= start_date)
+        if end_date:
+            query = query.where(RequestLog.request_time < end_date)
+
+        sort_column = getattr(RequestLog, sort_by, RequestLog.id)
+        if sort_order.lower() == 'asc':
+            query = query.order_by(asc(sort_column))
+        else:
+            query = query.order_by(desc(sort_column))
+
+        query = query.limit(limit).offset(offset)
+
+        result = await database.fetch_all(query)
+        return [dict(row) for row in result]
+    except Exception as e:
+        logger.exception(f"Failed to get request logs with filters: {str(e)}")
+        raise
+
+
+async def get_request_logs_count(
+    model_search: Optional[str] = None,
+    key_search: Optional[str] = None,
+    success_filter: Optional[bool] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> int:
+    """
+    获取符合条件的请求日志总数
+
+    Args:
+        model_search (Optional[str]): 模型名称搜索词 (模糊匹配)
+        key_search (Optional[str]): API密钥搜索词 (模糊匹配)
+        success_filter (Optional[bool]): 成功状态过滤
+        start_date (Optional[datetime]): 开始日期时间
+        end_date (Optional[datetime]): 结束日期时间
+
+    Returns:
+        int: 日志总数
+    """
+    try:
+        query = select(func.count()).select_from(RequestLog)
+
+        if model_search:
+            query = query.where(RequestLog.model_name.ilike(f"%{model_search}%"))
+        if key_search:
+            query = query.where(RequestLog.api_key.ilike(f"%{key_search}%"))
+        if success_filter is not None:
+            query = query.where(RequestLog.is_success == success_filter)
+        if start_date:
+            query = query.where(RequestLog.request_time >= start_date)
+        if end_date:
+            query = query.where(RequestLog.request_time < end_date)
+
+        count_result = await database.fetch_one(query)
+        return count_result[0] if count_result else 0
+    except Exception as e:
+        logger.exception(f"Failed to count request logs with filters: {str(e)}")
+        raise
+
+
+async def get_request_log_details(log_id: int) -> Optional[Dict[str, Any]]:
+    """
+    根据 ID 获取单个请求日志的详细信息
+
+    Args:
+        log_id (int): 请求日志的 ID
+
+    Returns:
+        Optional[Dict[str, Any]]: 包含日志详细信息的字典，如果未找到则返回 None
+    """
+    try:
+        query = select(RequestLog).where(RequestLog.id == log_id)
+        result = await database.fetch_one(query)
+        return dict(result) if result else None
+    except Exception as e:
+        logger.exception(f"Failed to get request log details for ID {log_id}: {str(e)}")
+        raise
+
+
+async def delete_request_logs_by_ids(log_ids: List[int]) -> int:
+    """
+    根据提供的 ID 列表批量删除请求日志 (异步)。
+
+    Args:
+        log_ids: 要删除的请求日志 ID 列表。
+
+    Returns:
+        int: 实际删除的日志数量。
+    """
+    if not log_ids:
+        return 0
+    try:
+        query = delete(RequestLog).where(RequestLog.id.in_(log_ids))
+        await database.execute(query)
+        logger.info(f"Attempted bulk deletion for request logs with IDs: {log_ids}")
+        return len(log_ids)
+    except Exception as e:
+        logger.error(f"Error during bulk deletion of request logs {log_ids}: {e}", exc_info=True)
+        raise
+
+
+async def delete_request_log_by_id(log_id: int) -> bool:
+    """
+    根据 ID 删除单个请求日志 (异步)。
+
+    Args:
+        log_id: 要删除的请求日志 ID。
+
+    Returns:
+        bool: 如果成功删除返回 True，否则返回 False。
+    """
+    try:
+        # 先检查是否存在
+        check_query = select(RequestLog.id).where(RequestLog.id == log_id)
+        exists = await database.fetch_one(check_query)
+
+        if not exists:
+            logger.warning(f"Attempted to delete non-existent request log with ID: {log_id}")
+            return False
+
+        # 执行删除
+        delete_query = delete(RequestLog).where(RequestLog.id == log_id)
+        await database.execute(delete_query)
+        logger.info(f"Successfully deleted request log with ID: {log_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting request log with ID {log_id}: {e}", exc_info=True)
+        raise
+
+
+async def delete_all_request_logs() -> int:
+    """
+    删除所有请求日志条目。
+
+    Returns:
+        int: 被删除的请求日志数量。
+    """
+    try:
+        # 1. 获取删除前的总数
+        count_query = select(func.count()).select_from(RequestLog)
+        total_to_delete = await database.fetch_val(count_query)
+
+        if total_to_delete == 0:
+            logger.info("No request logs found to delete.")
+            return 0
+
+        # 2. 执行删除操作
+        delete_query = delete(RequestLog)
+        await database.execute(delete_query)
+        
+        logger.info(f"Successfully deleted all {total_to_delete} request logs.")
+        return total_to_delete
+    except Exception as e:
+        logger.error(f"Failed to delete all request logs: {str(e)}", exc_info=True)
+        raise
