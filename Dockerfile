@@ -9,6 +9,9 @@ COPY ./VERSION /app
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ./app /app/app
 COPY ./migrations /app/migrations
+COPY ./entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 ENV API_KEYS='["your_api_key_1"]'
 ENV ALLOWED_TOKENS='["your_token_1"]'
 ENV BASE_URL=https://generativelanguage.googleapis.com/v1beta
@@ -21,5 +24,5 @@ ENV CLOUDFLARE_IMGBED_UPLOAD_FOLDER=""
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+# Run the application with migration check
+CMD ["/app/entrypoint.sh"]
