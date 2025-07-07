@@ -18,6 +18,7 @@ from app.service.image.image_create_service import ImageCreateService
 from app.service.tts.tts_service import TTSService
 from app.service.key.key_manager import KeyManager, get_key_manager_instance
 from app.service.model.model_service import ModelService
+from app.utils.helpers import transform_model_name
 
 router = APIRouter()
 logger = get_openai_logger()
@@ -36,7 +37,22 @@ async def get_key_manager():
 async def get_next_working_key_wrapper(
     key_manager: KeyManager = Depends(get_key_manager),
 ):
+    # 如果有當前 key 且啟用了 RPM 緩存，先返回當前 key
+    if hasattr(key_manager, 'current_key') and key_manager.current_key and key_manager.rpm_prefer_cache:
+        logger.info(f"[RPM] Returning current cached key: {key_manager.current_key}")
+        return key_manager.current_key
     return await key_manager.get_next_working_key()
+
+
+# 新的 wrapper，根據請求中的模型來選擇 key
+def get_next_working_key_with_model_wrapper(request: ChatRequest):
+    async def _get_key(
+        key_manager: KeyManager = Depends(get_key_manager),
+    ):
+        # 轉換模型名稱
+        model = transform_model_name(request.model)
+        return await key_manager.get_next_working_key_with_rpm(model)
+    return _get_key
 
 
 async def get_openai_chat_service(key_manager: KeyManager = Depends(get_key_manager)):
@@ -66,20 +82,26 @@ async def list_models(
 
 @router.post("/v1/chat/completions")
 @router.post("/hf/v1/chat/completions")
-@RetryHandler(key_arg="api_key")
 async def chat_completion(
     request: ChatRequest,
     _=Depends(security_service.verify_authorization),
-    api_key: str = Depends(get_next_working_key_wrapper),
     key_manager: KeyManager = Depends(get_key_manager),
     chat_service: OpenAIChatService = Depends(get_openai_chat_service),
 ):
     """处理 OpenAI 聊天补全请求，支持流式响应和特定模型切换。"""
     operation_name = "chat_completion"
+    
+    # 轉換模型名稱
+    request.model = transform_model_name(request.model)
+    
     is_image_chat = request.model == f"{settings.CREATE_IMAGE_MODEL}-chat"
-    current_api_key = api_key
+    
+    # 獲取適當的 API key - 這是唯一的 key 獲取點
     if is_image_chat:
         current_api_key = await key_manager.get_paid_key()
+    else:
+        # 使用 RPM 感知的方法獲取 key
+        current_api_key = await key_manager.get_next_working_key_with_rpm(request.model)
 
     async with handle_route_errors(logger, operation_name):
         logger.info(f"Handling chat completion request for model: {request.model}")

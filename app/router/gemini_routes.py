@@ -12,6 +12,7 @@ from app.service.model.model_service import ModelService
 from app.handler.retry_handler import RetryHandler
 from app.handler.error_handler import handle_route_errors
 from app.core.constants import API_VERSION
+from app.utils.helpers import transform_model_name
 
 router = APIRouter(prefix=f"/gemini/{API_VERSION}")
 router_v1beta = APIRouter(prefix=f"/{API_VERSION}")
@@ -29,6 +30,17 @@ async def get_key_manager():
 async def get_next_working_key(key_manager: KeyManager = Depends(get_key_manager)):
     """获取下一个可用的API密钥"""
     return await key_manager.get_next_working_key()
+
+
+# 新的 wrapper 函數，用於處理帶模型參數的路由
+def get_next_working_key_with_model_wrapper(model_name: str):
+    async def _get_key(
+        key_manager: KeyManager = Depends(get_key_manager),
+    ):
+        # 轉換模型名稱
+        model = transform_model_name(model_name)
+        return await key_manager.get_next_working_key_with_rpm(model)
+    return _get_key
 
 
 async def get_chat_service(key_manager: KeyManager = Depends(get_key_manager)):
@@ -100,12 +112,18 @@ async def generate_content(
     model_name: str,
     request: GeminiRequest,
     _=Depends(security_service.verify_key_or_goog_api_key),
-    api_key: str = Depends(get_next_working_key),
     key_manager: KeyManager = Depends(get_key_manager),
     chat_service: GeminiChatService = Depends(get_chat_service)
 ):
     """处理 Gemini 非流式内容生成请求。"""
     operation_name = "gemini_generate_content"
+    
+    # 轉換模型名稱
+    model_name = transform_model_name(model_name)
+    
+    # 獲取 API key - 使用 RPM 感知的方法
+    api_key = await key_manager.get_next_working_key_with_rpm(model_name)
+    
     async with handle_route_errors(logger, operation_name, failure_message="Content generation failed"):
         logger.info(f"Handling Gemini content generation request for model: {model_name}")
         logger.debug(f"Request: \n{request.model_dump_json(indent=2)}")
@@ -129,12 +147,18 @@ async def stream_generate_content(
     model_name: str,
     request: GeminiRequest,
     _=Depends(security_service.verify_key_or_goog_api_key),
-    api_key: str = Depends(get_next_working_key),
     key_manager: KeyManager = Depends(get_key_manager),
     chat_service: GeminiChatService = Depends(get_chat_service)
 ):
     """处理 Gemini 流式内容生成请求。"""
     operation_name = "gemini_stream_generate_content"
+    
+    # 轉換模型名稱
+    model_name = transform_model_name(model_name)
+    
+    # 獲取 API key - 使用 RPM 感知的方法
+    api_key = await key_manager.get_next_working_key_with_rpm(model_name)
+    
     async with handle_route_errors(logger, operation_name, failure_message="Streaming request initiation failed"):
         logger.info(f"Handling Gemini streaming content generation for model: {model_name}")
         logger.debug(f"Request: \n{request.model_dump_json(indent=2)}")
@@ -158,12 +182,18 @@ async def count_tokens(
     model_name: str,
     request: GeminiRequest,
     _=Depends(security_service.verify_key_or_goog_api_key),
-    api_key: str = Depends(get_next_working_key),
     key_manager: KeyManager = Depends(get_key_manager),
     chat_service: GeminiChatService = Depends(get_chat_service)
 ):
     """處理 Gemini countTokens 請求，計算輸入內容的 token 數量。"""
     operation_name = "gemini_count_tokens"
+    
+    # 轉換模型名稱
+    model_name = transform_model_name(model_name)
+    
+    # 獲取 API key - 使用 RPM 感知的方法
+    api_key = await key_manager.get_next_working_key_with_rpm(model_name)
+    
     async with handle_route_errors(logger, operation_name, failure_message="Count tokens failed"):
         logger.info(f"Handling Gemini count tokens request for model: {model_name}")
         logger.debug(f"Request: \n{request.model_dump_json(indent=2)}")

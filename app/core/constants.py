@@ -77,3 +77,18 @@ DEFAULT_SAFETY_SETTINGS = [
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"},
         {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"},
     ]
+
+# RPM (Requests Per Minute) 限制
+DEFAULT_RPM_LIMITS = {
+    "gemini-2.5-pro": 5,
+    "gemini-2.0-pro": 5,
+    "gemini-1.5-pro": 5,
+    "gemini-2.5-flash": 10,
+    "gemini-2.0-flash": 10,
+    "gemini-1.5-flash": 10,
+    "gemini-2.5-flash-lite": 15,
+    "gemini-2.0-flash-lite": 15,
+    "gemini-1.5-flash-lite": 15,
+}
+DEFAULT_RPM_WINDOW_SECONDS = 60  # 滑動窗口大小（秒）
+DEFAULT_RPM_PREFER_CACHE = True  # 是否優先使用緩存的 key

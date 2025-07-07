@@ -23,6 +23,9 @@ from app.core.constants import (
     DEFAULT_STREAM_SHORT_TEXT_THRESHOLD,
     DEFAULT_TIMEOUT,
     MAX_RETRIES,
+    DEFAULT_RPM_LIMITS,
+    DEFAULT_RPM_WINDOW_SECONDS,
+    DEFAULT_RPM_PREFER_CACHE,
 )
 from app.log.logger import Logger
 
@@ -111,6 +114,11 @@ class Settings(BaseSettings):
     # github
     GITHUB_REPO_OWNER: str = "snailyp"
     GITHUB_REPO_NAME: str = "gemini-balance"
+    
+    # RPM 限制配置
+    RPM_LIMITS: Dict[str, int] = DEFAULT_RPM_LIMITS
+    RPM_WINDOW_SECONDS: int = DEFAULT_RPM_WINDOW_SECONDS
+    RPM_PREFER_CACHE: bool = DEFAULT_RPM_PREFER_CACHE
 
     # 日志配置
     LOG_LEVEL: str = "INFO"
