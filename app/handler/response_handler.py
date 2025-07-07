@@ -187,26 +187,35 @@ def _extract_result(
     else:
         if response.get("candidates"):
             candidate = response["candidates"][0]
+            content = candidate.get("content", {})
+            
+            # 確保 content 是字典且包含 parts
+            if not isinstance(content, dict) or "parts" not in content:
+                text = "響應格式錯誤"
+                return text, [], None
+                
+            parts = content.get("parts", [])
+            
             if "thinking" in model:
                 if settings.SHOW_THINKING_PROCESS:
-                    if len(candidate["content"]["parts"]) == 2:
+                    if len(parts) == 2:
                         text = (
                             "> thinking\n\n"
-                            + candidate["content"]["parts"][0]["text"]
+                            + parts[0].get("text", "")
                             + "\n\n---\n> output\n\n"
-                            + candidate["content"]["parts"][1]["text"]
+                            + parts[1].get("text", "")
                         )
                     else:
-                        text = candidate["content"]["parts"][0]["text"]
+                        text = parts[0].get("text", "") if parts else ""
                 else:
-                    if len(candidate["content"]["parts"]) == 2:
-                        text = candidate["content"]["parts"][1]["text"]
+                    if len(parts) == 2:
+                        text = parts[1].get("text", "") if len(parts) > 1 else ""
                     else:
-                        text = candidate["content"]["parts"][0]["text"]
+                        text = parts[0].get("text", "") if parts else ""
             else:
                 text = ""
-                if "parts" in candidate["content"]:
-                    for part in candidate["content"]["parts"]:
+                for part in parts:
+                    if isinstance(part, dict):
                         if "text" in part:
                             text += part["text"]
                             if "thought" in part and thought is None:
@@ -215,9 +224,7 @@ def _extract_result(
                             text += _extract_image_data(part)
 
             text = _add_search_link_text(model, candidate, text)
-            tool_calls = _extract_tool_calls(
-                candidate["content"]["parts"], gemini_format
-            )
+            tool_calls = _extract_tool_calls(parts, gemini_format)
         else:
             text = "暂无返回"
     return text, tool_calls, thought

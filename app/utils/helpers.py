@@ -154,6 +154,30 @@ def is_valid_api_key(key: str) -> bool:
 
 
 
+def transform_model_name(model_name: str) -> str:
+    """
+    轉換模型名稱，將特定的預覽版本映射到正式版本
+    
+    Args:
+        model_name: 原始模型名稱
+        
+    Returns:
+        str: 轉換後的模型名稱
+    """
+    # 處理 gemini-2.5-flash-* 預覽版本
+    if model_name.startswith("gemini-2.5-flash-"):
+        helper_logger.debug(f"Transforming model name from '{model_name}' to 'gemini-2.5-flash'")
+        return "gemini-2.5-flash"
+    
+    # 處理 gemini-2.5-pro-* 預覽版本
+    if model_name.startswith("gemini-2.5-pro-"):
+        helper_logger.debug(f"Transforming model name from '{model_name}' to 'gemini-2.5-pro'")
+        return "gemini-2.5-pro"
+    
+    # 否則返回原始名稱
+    return model_name
+
+
 def get_current_version(default_version: str = "0.0.0") -> str:
     """Reads the current version from the VERSION file."""
     version_file = VERSION_FILE_PATH
