@@ -57,6 +57,13 @@ class RequestLog(Base):
     is_success = Column(Boolean, nullable=False, comment="请求是否成功")
     status_code = Column(Integer, nullable=True, comment="API响应状态码")
     latency_ms = Column(Integer, nullable=True, comment="请求耗时(毫秒)")
+    # 新增詳細資料欄位
+    request_body = Column(JSON, nullable=True, comment="请求内容")
+    response_summary = Column(Text, nullable=True, comment="响应摘要")
+    prompt_tokens = Column(Integer, nullable=True, comment="输入Token数")
+    completion_tokens = Column(Integer, nullable=True, comment="输出Token数")
+    total_tokens = Column(Integer, nullable=True, comment="总Token数")
+    error_message = Column(Text, nullable=True, comment="错误信息")
 
     def __repr__(self):
         return f"<RequestLog(id='{self.id}', key='{self.api_key[:4]}...', success='{self.is_success}')>"

@@ -146,6 +146,7 @@ def _build_payload(
         and isinstance(instruction, dict)
         and instruction.get("role") == "system"
         and instruction.get("parts")
+        and len(instruction.get("parts", [])) > 0
         and not request.model.endswith("-image")
         and not request.model.endswith("-image-generation")
     ):
@@ -240,6 +241,30 @@ class OpenAIChatService:
         finally:
             end_time = time.perf_counter()
             latency_ms = int((end_time - start_time) * 1000)
+            
+            # 準備詳細數據
+            request_body = payload
+            response_summary = None
+            prompt_tokens = None
+            completion_tokens = None
+            total_tokens = None
+            error_message = None if is_success else error_log_msg if 'error_log_msg' in locals() else None
+            
+            if is_success and response:
+                # 提取 token 使用量
+                usage_metadata = response.get("usageMetadata", {})
+                prompt_tokens = usage_metadata.get("promptTokenCount")
+                completion_tokens = usage_metadata.get("candidatesTokenCount")
+                total_tokens = usage_metadata.get("totalTokenCount")
+                
+                # 生成響應摘要
+                if response.get("candidates"):
+                    first_candidate = response["candidates"][0]
+                    if first_candidate.get("content", {}).get("parts"):
+                        first_part = first_candidate["content"]["parts"][0]
+                        text_content = first_part.get("text", "")
+                        response_summary = text_content[:500] + "..." if len(text_content) > 500 else text_content
+            
             await add_request_log(
                 model_name=model,
                 api_key=api_key,
@@ -247,6 +272,12 @@ class OpenAIChatService:
                 status_code=status_code,
                 latency_ms=latency_ms,
                 request_time=request_datetime,
+                request_body=request_body,
+                response_summary=response_summary,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                error_message=error_message,
             )
 
     async def _fake_stream_logic_impl(
@@ -429,7 +460,7 @@ class OpenAIChatService:
 
                 if self.key_manager:
                     new_api_key = await self.key_manager.handle_api_failure(
-                        current_attempt_key, retries
+                        current_attempt_key, retries, model
                     )
                     if new_api_key and new_api_key != current_attempt_key:
                         final_api_key = new_api_key
@@ -454,6 +485,11 @@ class OpenAIChatService:
             finally:
                 end_time = time.perf_counter()
                 latency_ms = int((end_time - start_time) * 1000)
+                
+                # 準備詳細數據（流式請求）
+                request_body = payload
+                error_message = None if is_success else error_log_msg if 'error_log_msg' in locals() else None
+                
                 await add_request_log(
                     model_name=model,
                     api_key=current_attempt_key,
@@ -461,6 +497,9 @@ class OpenAIChatService:
                     status_code=status_code,
                     latency_ms=latency_ms,
                     request_time=request_datetime,
+                    request_body=request_body,
+                    response_summary="[Streaming Response]",  # 流式響應沒有完整的摘要
+                    error_message=error_message,
                 )
 
         if not is_success:

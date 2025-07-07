@@ -1,5 +1,8 @@
 // 错误日志页面JavaScript (Updated for new structure, no Bootstrap)
 
+// 当前标签页状态
+let currentLogType = 'error'; // 'error' or 'request'
+
 // 页面滚动功能
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -7,6 +10,79 @@ function scrollToTop() {
 
 function scrollToBottom() {
   window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+}
+
+// 标签页切换功能 - 设为全局函数
+window.switchTab = function(logType) {
+  currentLogType = logType;
+  
+  // 更新标签按钮状态
+  const errorTab = document.getElementById('errorLogsTab');
+  const requestTab = document.getElementById('requestLogsTab');
+  
+  if (logType === 'error') {
+    errorTab.classList.add('active', 'border-blue-500', 'text-gray-100');
+    errorTab.classList.remove('border-transparent', 'text-gray-400');
+    requestTab.classList.remove('active', 'border-blue-500', 'text-gray-100');
+    requestTab.classList.add('border-transparent', 'text-gray-400');
+    
+    // 更新标题
+    document.getElementById('logTypeTitle').innerHTML = '<i class="fas fa-bug text-violet-400"></i> 错误日志列表';
+    
+    // 显示/隐藏相关元素
+    document.querySelectorAll('.error-log-only').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.request-log-only').forEach(el => el.classList.add('hidden'));
+    
+    // 更新表头文字
+    document.querySelector('.key-column').textContent = 'Gemini密钥';
+  } else {
+    requestTab.classList.add('active', 'border-blue-500', 'text-gray-100');
+    requestTab.classList.remove('border-transparent', 'text-gray-400');
+    errorTab.classList.remove('active', 'border-blue-500', 'text-gray-100');
+    errorTab.classList.add('border-transparent', 'text-gray-400');
+    
+    // 更新标题
+    document.getElementById('logTypeTitle').innerHTML = '<i class="fas fa-list-alt text-violet-400"></i> 所有请求列表';
+    
+    // 显示/隐藏相关元素
+    document.querySelectorAll('.error-log-only').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.request-log-only').forEach(el => el.classList.remove('hidden'));
+    
+    // 更新表头文字
+    document.querySelector('.key-column').textContent = 'API密钥';
+  }
+  
+  // 重置页码和搜索
+  errorLogState.currentPage = 1;
+  clearSearchInputs();
+  
+  // 加载对应的日志
+  if (logType === 'error') {
+    loadErrorLogs();
+  } else {
+    loadRequestLogs();
+  }
+}
+
+// 清除搜索输入
+function clearSearchInputs() {
+  if (keySearchInput) keySearchInput.value = '';
+  if (errorSearchInput) errorSearchInput.value = '';
+  if (errorCodeSearchInput) errorCodeSearchInput.value = '';
+  if (startDateInput) startDateInput.value = '';
+  if (endDateInput) endDateInput.value = '';
+  if (document.getElementById('successFilter')) {
+    document.getElementById('successFilter').value = '';
+  }
+  
+  // 清除搜索状态
+  errorLogState.search = {
+    key: "",
+    error: "",
+    errorCode: "",
+    startDate: "",
+    endDate: "",
+  };
 }
 
 // API 调用辅助函数
@@ -113,6 +189,7 @@ let deleteConfirmMessage; // 新增：删除确认消息元素
 let idsToDeleteGlobally = []; // 新增：存储待删除的ID
 let currentConfirmCallback = null; // 新增：存储当前的确认回调
 let deleteAllLogsBtn; // 新增：清空全部按钮
+let successFilterSelect; // 新增：成功状态过滤器
 
 // Helper functions for initialization
 function cacheDOMElements() {
@@ -150,6 +227,7 @@ function cacheDOMElements() {
   confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
   deleteConfirmMessage = document.getElementById("deleteConfirmMessage");
   deleteAllLogsBtn = document.getElementById("deleteAllLogsBtn"); // 缓存清空全部按钮
+  successFilterSelect = document.getElementById("successFilter"); // 缓存成功状态过滤器
  }
   
  function initializePageSizeControls() {
@@ -180,7 +258,13 @@ function initializeSearchControls() {
         : "";
       errorLogState.search.endDate = endDateInput ? endDateInput.value : "";
       errorLogState.currentPage = 1; // Reset to first page on new search
-      loadErrorLogs();
+      
+      // 根据当前标签页加载对应的日志
+      if (currentLogType === 'error') {
+        loadErrorLogs();
+      } else {
+        loadRequestLogs();
+      }
     });
   }
 }
@@ -254,7 +338,8 @@ function initializeActionControls() {
    // 为 "清空全部" 按钮添加事件监听器
    if (deleteAllLogsBtn) {
      deleteAllLogsBtn.addEventListener("click", function() {
-       const message = "您确定要清空所有错误日志吗？此操作不可恢复！";
+       const logTypeText = currentLogType === 'error' ? '错误日志' : '请求日志';
+       const message = `您确定要清空所有${logTypeText}吗？此操作不可恢复！`;
        showDeleteConfirmModal(message, handleDeleteAllLogs); // 传入回调
      });
    }
@@ -262,18 +347,29 @@ function initializeActionControls() {
   
  // 新增：处理 "清空全部" 逻辑的函数
  async function handleDeleteAllLogs() {
-   const url = "/api/logs/errors/all";
+   // 根据当前标签页确定 URL 和成功消息
+   const isErrorLog = currentLogType === 'error';
+   const url = isErrorLog ? "/api/logs/errors/all" : "/api/logs/requests/all";
+   const successMessage = isErrorLog ? "所有错误日志已成功清空" : "所有请求日志已成功清空";
+   const errorMessage = isErrorLog ? "清空所有错误日志失败:" : "清空所有请求日志失败:";
+   
    const options = {
      method: "DELETE",
    };
  
    try {
      await fetchAPI(url, options);
-     showNotification("所有错误日志已成功清空", "success");
+     showNotification(successMessage, "success");
      if (selectAllCheckbox) selectAllCheckbox.checked = false; // 取消全选
-     loadErrorLogs(); // 重新加载日志
+     
+     // 根据当前标签页重新加载对应的日志
+     if (isErrorLog) {
+       loadErrorLogs();
+     } else {
+       loadRequestLogs();
+     }
    } catch (error) {
-     console.error("清空所有错误日志失败:", error);
+     console.error(errorMessage, error);
      showNotification(`清空失败: ${error.message}`, "error", 5000);
    }
  }
@@ -587,7 +683,11 @@ function handleDeleteSelected() {
   idsToDeleteGlobally = logIdsToDelete; // 仍然需要设置，因为 performActualDelete 会用到
   const message = `确定要删除选中的 ${logIdsToDelete.length} 条日志吗？此操作不可恢复！`;
   showDeleteConfirmModal(message, function() { // 传入匿名回调
-    performActualDelete(idsToDeleteGlobally);
+    if (currentLogType === 'error') {
+      performActualDelete(idsToDeleteGlobally);
+    } else {
+      performActualRequestLogDelete(idsToDeleteGlobally);
+    }
   });
 }
  
@@ -863,6 +963,29 @@ function renderErrorLogs(logs) {
 // 显示错误日志详情 (从 API 获取)
 async function showLogDetails(logId) {
   if (!logDetailModal) return;
+
+  // 恢复模态框标题为错误日志
+  const modalTitle = document.querySelector("#logDetailModal h2");
+  if (modalTitle) {
+    modalTitle.textContent = "错误日志详情";
+  }
+  
+  // 恢复标签文字
+  const labels = {
+    'API密钥:': 'Gemini密钥:',
+    '请求状态:': '错误类型:',
+    '请求信息:': '错误日志:',
+    '备注:': '请求消息:'
+  };
+  
+  // 查找并恢复所有标签
+  const modalLabels = document.querySelectorAll("#logDetailModal h6");
+  modalLabels.forEach(label => {
+    const currentText = label.textContent;
+    if (labels[currentText]) {
+      label.textContent = labels[currentText];
+    }
+  });
 
   // Show loading state in modal (optional)
   // Clear previous content and show a spinner or message
@@ -1180,3 +1303,312 @@ function showNotification(message, type = "success", duration = 3000) {
 // Example Usage (if copy functionality is added later):
 // showNotification('密钥已复制!', 'success');
 // showNotification('复制失败!', 'error');
+
+// 加载请求日志
+async function loadRequestLogs() {
+  // Reset UI states
+  showLoading(true);
+  showNoData(false);
+  showError(false);
+
+  const offset = (errorLogState.currentPage - 1) * errorLogState.pageSize;
+
+  try {
+    // Construct the API URL with search and sort parameters
+    let apiUrl = `/api/logs/requests?limit=${errorLogState.pageSize}&offset=${offset}`;
+    // 添加排序参数
+    apiUrl += `&sort_by=${errorLogState.sort.field}&sort_order=${errorLogState.sort.order}`;
+
+    // 添加搜索参数
+    if (errorLogState.search.key) {
+      apiUrl += `&key_search=${encodeURIComponent(errorLogState.search.key)}`;
+    }
+    if (errorLogState.search.error) {
+      apiUrl += `&model_search=${encodeURIComponent(errorLogState.search.error)}`;
+    }
+    // 成功状态过滤
+    const successFilter = document.getElementById('successFilter');
+    if (successFilter && successFilter.value) {
+      apiUrl += `&success_filter=${successFilter.value}`;
+    }
+    if (errorLogState.search.startDate) {
+      apiUrl += `&start_date=${encodeURIComponent(
+        errorLogState.search.startDate
+      )}`;
+    }
+    if (errorLogState.search.endDate) {
+      apiUrl += `&end_date=${encodeURIComponent(errorLogState.search.endDate)}`;
+    }
+
+    // Use fetchAPI to get logs
+    const data = await fetchAPI(apiUrl);
+
+    // API 返回 { logs: [], total: count }
+    if (data && Array.isArray(data.logs)) {
+      errorLogState.logs = data.logs;
+      renderRequestLogs(data.logs);
+      updatePagination(data.logs.length, data.total || -1);
+    } else {
+      console.error("Unexpected API response format:", data);
+      throw new Error("无法识别的API响应格式");
+    }
+
+    showLoading(false);
+
+    if (errorLogState.logs.length === 0) {
+      showNoData(true);
+    }
+  } catch (error) {
+    console.error("获取请求日志失败:", error);
+    showLoading(false);
+    showError(true, error.message);
+  }
+}
+
+// 渲染请求日志表格
+function renderRequestLogs(logs) {
+  if (!tableBody) return;
+  tableBody.innerHTML = ""; // Clear previous entries
+
+  // 重置全选复选框状态
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  }
+
+  if (!logs || logs.length === 0) {
+    return;
+  }
+
+  const startIndex = (errorLogState.currentPage - 1) * errorLogState.pageSize;
+
+  logs.forEach((log, index) => {
+    const sequentialId = startIndex + index + 1;
+    const row = document.createElement("tr");
+    row.innerHTML = _createRequestLogRowHtml(log, sequentialId);
+    tableBody.appendChild(row);
+  });
+
+  // Add event listeners
+  document.querySelectorAll(".btn-view-details").forEach((button) => {
+    button.addEventListener("click", function () {
+      const logId = parseInt(this.getAttribute("data-log-id"));
+      loadRequestLogDetails(logId);
+    });
+  });
+
+  document.querySelectorAll(".btn-delete-row").forEach((button) => {
+    button.addEventListener("click", function () {
+      const logId = this.getAttribute("data-log-id");
+      handleDeleteRequestLogRow(logId);
+    });
+  });
+
+  setupCopyButtons("#errorLogsTable");
+  updateSelectedState();
+}
+
+// 创建请求日志行的 HTML
+function _createRequestLogRowHtml(log, sequentialId) {
+  // Format date
+  let formattedTime = "N/A";
+  try {
+    const requestTime = new Date(log.request_time);
+    if (!isNaN(requestTime)) {
+      formattedTime = requestTime.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+    }
+  } catch (e) {
+    console.error("Error formatting date:", e);
+  }
+
+  const maskKey = (key) => {
+    if (!key || key.length < 8) return key || "无";
+    return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
+  };
+  const maskedKey = maskKey(log.api_key);
+  const fullKey = log.api_key || "";
+
+  // 状态显示
+  const statusIcon = log.is_success ? 
+    '<i class="fas fa-check-circle text-green-500"></i>' : 
+    '<i class="fas fa-times-circle text-red-500"></i>';
+  const statusText = log.is_success ? '成功' : '失败';
+  
+  // 延迟显示
+  const latencyDisplay = log.latency_ms ? `${log.latency_ms} ms` : 'N/A';
+  const latencyClass = log.latency_ms > 1000 ? 'text-red-600' : 'text-gray-700';
+
+  return `
+        <td class="text-center px-3 py-3 text-gray-700">
+            <input type="checkbox" class="row-checkbox form-checkbox h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-key="${fullKey}" data-log-id="${log.id}">
+        </td>
+        <td class="text-gray-700">${sequentialId}</td>
+        <td class="relative group text-gray-700" title="${fullKey}">
+            ${maskedKey}
+            <button class="copy-btn absolute top-1/2 right-2 transform -translate-y-1/2 bg-gray-200 hover:bg-gray-300 text-gray-600 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-xs" data-copy-text="${fullKey}" title="复制完整密钥">
+                <i class="far fa-copy"></i>
+            </button>
+        </td>
+        <td class="text-center">${statusIcon} ${statusText}</td>
+        <td class="text-gray-700">${log.status_code || 'N/A'}</td>
+        <td class="${latencyClass}">${latencyDisplay}</td>
+        <td class="text-gray-700">${log.model_name || "未知"}</td>
+        <td class="text-gray-700">${formattedTime}</td>
+        <td>
+            <button class="btn-view-details mr-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-all duration-200" data-log-id="${log.id}">
+                <i class="fas fa-eye mr-1"></i>详情
+            </button>
+            <button class="btn-delete-row bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm transition-all duration-200" data-log-id="${log.id}" title="删除此日志">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </td>
+    `;
+}
+
+// 加载请求日志详情
+async function loadRequestLogDetails(logId) {
+  try {
+    const url = `/api/logs/requests/${logId}/details`;
+    const data = await fetchAPI(url);
+    
+    if (data) {
+      // 更新模态框标题为请求日志
+      const modalTitle = document.querySelector("#logDetailModal h2");
+      if (modalTitle) {
+        modalTitle.textContent = "请求日志详情";
+      }
+      
+      // 更新标签文字
+      const labels = {
+        'Gemini密钥:': 'API密钥:',
+        '错误类型:': '请求状态:',
+        '错误日志:': '请求信息:',
+        '请求消息:': '备注:'
+      };
+      
+      // 查找并更新所有标签
+      const modalLabels = document.querySelectorAll("#logDetailModal h6");
+      modalLabels.forEach(label => {
+        const currentText = label.textContent;
+        if (labels[currentText]) {
+          label.textContent = labels[currentText];
+        }
+      });
+      
+      // 显示请求日志详情
+      document.getElementById("modalGeminiKey").textContent = data.api_key || "无";
+      document.getElementById("modalErrorType").textContent = data.is_success ? "成功" : "失败";
+      
+      // 请求信息详细展示
+      let requestInfo = `状态码: ${data.status_code || 'N/A'}\n`;
+      requestInfo += `响应延迟: ${data.latency_ms || 'N/A'} ms`;
+      if (data.latency_ms > 1000) {
+        requestInfo += ` (${(data.latency_ms / 1000).toFixed(2)} 秒)`;
+      }
+      requestInfo += `\n请求类型: API 调用`;
+      requestInfo += `\n请求状态: ${data.is_success ? '✅ 成功完成' : '❌ 请求失败'}`;
+      
+      // 新增 Token 使用信息
+      if (data.prompt_tokens || data.completion_tokens || data.total_tokens) {
+        requestInfo += `\n\nToken 使用情況:`;
+        if (data.prompt_tokens) requestInfo += `\n  輸入: ${data.prompt_tokens} tokens`;
+        if (data.completion_tokens) requestInfo += `\n  輸出: ${data.completion_tokens} tokens`;
+        if (data.total_tokens) requestInfo += `\n  總計: ${data.total_tokens} tokens`;
+      }
+      
+      // 如果有錯誤信息
+      if (data.error_message) {
+        requestInfo += `\n\n錯誤信息: ${data.error_message}`;
+      }
+      
+      document.getElementById("modalErrorLog").textContent = requestInfo;
+      
+      // 顯示請求內容或響應摘要
+      let detailContent = '';
+      
+      if (data.request_body) {
+        try {
+          const requestBody = typeof data.request_body === 'string' ? 
+            JSON.parse(data.request_body) : data.request_body;
+          detailContent = '請求內容:\n' + JSON.stringify(requestBody, null, 2);
+        } catch (e) {
+          detailContent = '請求內容:\n' + (data.request_body || 'N/A');
+        }
+      }
+      
+      if (data.response_summary) {
+        if (detailContent) detailContent += '\n\n';
+        detailContent += '響應摘要:\n' + data.response_summary;
+      }
+      
+      if (!detailContent) {
+        detailContent = `請求ID: ${data.id || 'N/A'}\n此請求${data.is_success ? '成功完成' : '執行失敗'}`;
+      }
+      
+      document.getElementById("modalRequestMsg").textContent = detailContent;
+      document.getElementById("modalModelName").textContent = data.model_name || "无";
+      document.getElementById("modalRequestTime").textContent = 
+        data.request_time ? new Date(data.request_time).toLocaleString("zh-CN") : "无";
+
+      // 显示模态框
+      if (logDetailModal) {
+        logDetailModal.classList.add("show");
+        document.body.style.overflow = "hidden"; // Prevent body scrolling
+      }
+    }
+  } catch (error) {
+    console.error("获取请求日志详情失败:", error);
+    showNotification(`获取详情失败: ${error.message}`, "error");
+  }
+}
+
+// 处理删除请求日志行
+function handleDeleteRequestLogRow(logId) {
+  if (!logId) return;
+
+  const message = `确定要删除这条请求日志吗？此操作不可恢复！`;
+  showDeleteConfirmModal(message, function() {
+    performActualRequestLogDelete([parseInt(logId)]);
+  });
+}
+
+// 执行实际的请求日志删除操作
+async function performActualRequestLogDelete(logIds) {
+  if (!logIds || logIds.length === 0) return;
+
+  const isSingleDelete = logIds.length === 1;
+  const url = isSingleDelete
+    ? `/api/logs/requests/${logIds[0]}`
+    : "/api/logs/requests";
+  const method = "DELETE";
+  const body = isSingleDelete ? null : JSON.stringify({ ids: logIds });
+  const headers = isSingleDelete ? {} : { "Content-Type": "application/json" };
+  const options = {
+    method: method,
+    headers: headers,
+    body: body,
+  };
+
+  try {
+    await fetchAPI(url, options);
+
+    const successMessage = isSingleDelete
+      ? `成功删除该请求日志`
+      : `成功删除 ${logIds.length} 条请求日志`;
+    showNotification(successMessage, "success");
+    
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    loadRequestLogs();
+  } catch (error) {
+    console.error("删除请求日志失败:", error);
+    showNotification(`删除失败: ${error.message}`, "error", 5000);
+  }
+}

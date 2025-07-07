@@ -570,6 +570,26 @@ endblock %} {% block head_extra_styles %}
     justify-content: center !important;
     text-align: center !important;
   }
+
+  /* Tab button styles */
+  .tab-button {
+    position: relative;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .tab-button:focus {
+    outline: none;
+  }
+
+  .tab-button.active {
+    color: #e5e7eb !important; /* gray-200 */
+    border-color: #3b82f6 !important; /* blue-500 */
+  }
+
+  .tab-button:not(.active):hover {
+    color: #d1d5db !important; /* gray-300 */
+  }
 </style>
 {% endblock %} {% block content %}
 <div class="container mx-auto px-4">
@@ -590,7 +610,7 @@ endblock %} {% block head_extra_styles %}
         alt="Gemini Balance Logo"
         class="h-9 inline-block align-middle mr-2"
       />
-      Gemini Balance - 错误日志
+      Gemini Balance - 日志管理
     </h1>
 
     <!-- Navigation Tabs -->
@@ -628,7 +648,26 @@ endblock %} {% block head_extra_styles %}
         border: 1px solid rgba(0, 0, 0, 0.08);
       "
     >
+      <!-- 标签页切换 -->
+      <div class="flex border-b border-violet-300 border-opacity-30 mb-6">
+        <button
+          id="errorLogsTab"
+          class="tab-button px-6 py-3 font-medium text-gray-100 border-b-2 border-blue-500 transition-all duration-200"
+          onclick="switchTab('error')"
+        >
+          <i class="fas fa-bug mr-2"></i>错误日志
+        </button>
+        <button
+          id="requestLogsTab"
+          class="tab-button px-6 py-3 font-medium text-gray-400 border-b-2 border-transparent hover:text-gray-100 transition-all duration-200"
+          onclick="switchTab('request')"
+        >
+          <i class="fas fa-list-alt mr-2"></i>所有请求
+        </button>
+      </div>
+
       <h2
+        id="logTypeTitle"
         class="text-xl font-bold mb-6 pb-3 border-b flex items-center gap-2 text-gray-100 border-violet-300 border-opacity-30"
       >
         <i class="fas fa-bug text-violet-400"></i> 错误日志列表
@@ -657,8 +696,16 @@ endblock %} {% block head_extra_styles %}
             type="text"
             id="errorCodeSearch"
             placeholder="搜索错误码"
-            class="px-3 py-1 rounded-lg form-input-themed"
+            class="px-3 py-1 rounded-lg form-input-themed error-log-only"
           />
+          <select
+            id="successFilter"
+            class="px-3 py-1 rounded-lg form-input-themed request-log-only hidden"
+          >
+            <option value="">所有状态</option>
+            <option value="true">成功</option>
+            <option value="false">失败</option>
+          </select>
           <div
             class="grid grid-cols-1 sm:grid-cols-2 gap-2 col-span-1 sm:col-span-2 lg:col-span-3 mt-2"
           >
@@ -738,9 +785,12 @@ endblock %} {% block head_extra_styles %}
               >
                 ID <i class="fas fa-sort ml-1"></i>
               </th>
-              <th class="px-5 py-3 font-semibold text-gray-700">Gemini密钥</th>
-              <th class="px-5 py-3 font-semibold text-gray-700">错误类型</th>
-              <th class="px-5 py-3 font-semibold text-gray-700">错误码</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 key-column">API密钥</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 error-log-only">错误类型</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 error-log-only">错误码</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 request-log-only hidden">状态</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 request-log-only hidden">状态码</th>
+              <th class="px-5 py-3 font-semibold text-gray-700 request-log-only hidden">延迟(ms)</th>
               <th class="px-5 py-3 font-semibold text-gray-700">模型名称</th>
               <th class="px-5 py-3 font-semibold text-gray-700">请求时间</th>
               <th
