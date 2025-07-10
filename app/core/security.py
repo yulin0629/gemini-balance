@@ -19,8 +19,22 @@ def should_bypass_auth(request: Request = None) -> bool:
     # 只檢查客戶端實際 IP，不檢查 Host header (避免安全風險)
     if request.client:
         client_host = request.client.host
-        if client_host in ["127.0.0.1", "::1", "localhost"]:
+        
+        # 本地 IP 地址
+        localhost_ips = ["127.0.0.1", "::1"]
+        
+        # Docker 橋接網路常見 IP (當通過 Docker 端口轉發訪問時)
+        # 這些是 Docker 默認橋接網路的網關 IP
+        docker_bridge_ips = ["172.17.0.1", "172.18.0.1", "172.19.0.1", "172.20.0.1"]
+        
+        # 檢查是否為允許的 IP
+        allowed_ips = localhost_ips + docker_bridge_ips
+        
+        if client_host in allowed_ips:
+            logger.debug(f"Bypassing auth for client IP: {client_host}")
             return True
+        else:
+            logger.debug(f"Auth required for client IP: {client_host}")
     
     return False
 

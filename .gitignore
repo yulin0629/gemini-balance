@@ -260,3 +260,14 @@ $RECYCLE.BIN/
 tests/
 default_db
 data/
+
+# Local deployment scripts
+dev-deploy.sh
+deploy-*.sh
+!deploy.sh
+
+# Local proxy management (不推送到 remote)
+local-proxy-management/
+
+# Claude configuration
+CLAUDE.md
