@@ -28,6 +28,33 @@ def _has_image_parts(contents: List[Dict[str, Any]]) -> bool:
     return False
 
 
+def _clean_json_schema_properties(obj: Any) -> Any:
+    """清理JSON Schema中Gemini API不支持的字段"""
+    if not isinstance(obj, dict):
+        return obj
+    
+    # Gemini API不支持的JSON Schema字段
+    unsupported_fields = {
+        "exclusiveMaximum", "exclusiveMinimum", "const", "examples", 
+        "contentEncoding", "contentMediaType", "if", "then", "else",
+        "allOf", "anyOf", "oneOf", "not", "definitions", "$schema",
+        "$id", "$ref", "$comment", "readOnly", "writeOnly"
+    }
+    
+    cleaned = {}
+    for key, value in obj.items():
+        if key in unsupported_fields:
+            continue
+        if isinstance(value, dict):
+            cleaned[key] = _clean_json_schema_properties(value)
+        elif isinstance(value, list):
+            cleaned[key] = [_clean_json_schema_properties(item) for item in value]
+        else:
+            cleaned[key] = value
+    
+    return cleaned
+
+
 def _build_tools(model: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """构建工具"""
     
@@ -40,7 +67,15 @@ def _build_tools(model: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             for k, v in item.items():
                 if k == "functionDeclarations" and v and isinstance(v, list):
                     functions = record.get("functionDeclarations", [])
-                    functions.extend(v)
+                    # 清理每个函数声明中的不支持字段
+                    cleaned_functions = []
+                    for func in v:
+                        if isinstance(func, dict):
+                            cleaned_func = _clean_json_schema_properties(func)
+                            cleaned_functions.append(cleaned_func)
+                        else:
+                            cleaned_functions.append(func)
+                    functions.extend(cleaned_functions)
                     record["functionDeclarations"] = functions
                 else:
                     record[k] = v
