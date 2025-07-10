@@ -270,4 +270,7 @@ deploy-*.sh
 local-proxy-management/
 
 # Claude configuration
-CLAUDE.mdai-sessions/
+CLAUDE.md
+
+# AI development sessions
+ai-sessions/
