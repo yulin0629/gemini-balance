@@ -92,3 +92,14 @@ DEFAULT_RPM_LIMITS = {
 }
 DEFAULT_RPM_WINDOW_SECONDS = 60  # 滑動窗口大小（秒）
 DEFAULT_RPM_PREFER_CACHE = True  # 是否優先使用緩存的 key
+
+TTS_VOICE_NAMES = [
+    "Zephyr", "Puck", "Charon", "Kore",
+    "Fenrir", "Leda", "Orus", "Aoede",
+    "Callirhoe", "Autonoe", "Enceladus", "Iapetus",
+    "Umbriel", "Algieba", "Despina", "Erinome",
+    "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+    "Alnilam", "Schedar", "Gacrux", "Pulcherrima",
+    "Achird", "Zubenelgenubi", "Vindemiatrix", "Sadachbia",
+    "Sadaltager", "Sulafat"
+]
