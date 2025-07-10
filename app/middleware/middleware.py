@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # from app.middleware.request_logging_middleware import RequestLoggingMiddleware
 from app.middleware.smart_routing_middleware import SmartRoutingMiddleware
 from app.core.constants import API_VERSION
-from app.core.security import verify_auth_token
+from app.core.security import verify_auth_token, should_bypass_auth
 from app.log.logger import get_middleware_logger
 
 logger = get_middleware_logger()
@@ -22,6 +22,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # localhost 環境跳過所有認證
+        if should_bypass_auth(request):
+            logger.debug(f"Bypassing authentication for localhost request to {request.url.path}")
+            response = await call_next(request)
+            return response
+            
         # 允许特定路径绕过身份验证
         if (
             request.url.path not in ["/", "/auth"]

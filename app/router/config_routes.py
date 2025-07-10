@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from app.core.security import verify_auth_token
+from app.core.security import verify_auth_token, should_bypass_auth
 from app.log.logger import Logger, get_config_routes_logger
 from app.service.config.config_service import ConfigService
 
@@ -19,19 +19,23 @@ logger = get_config_routes_logger()
 
 @router.get("", response_model=Dict[str, Any])
 async def get_config(request: Request):
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to config page")
-        return RedirectResponse(url="/", status_code=302)
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to config page")
+            return RedirectResponse(url="/", status_code=302)
     return await ConfigService.get_config()
 
 
 @router.put("", response_model=Dict[str, Any])
 async def update_config(config_data: Dict[str, Any], request: Request):
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to config page")
-        return RedirectResponse(url="/", status_code=302)
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to config page")
+            return RedirectResponse(url="/", status_code=302)
     try:
         result = await ConfigService.update_config(config_data)
         # 配置更新成功后，立即更新所有 logger 的级别
@@ -45,10 +49,12 @@ async def update_config(config_data: Dict[str, Any], request: Request):
 
 @router.post("/reset", response_model=Dict[str, Any])
 async def reset_config(request: Request):
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to config page")
-        return RedirectResponse(url="/", status_code=302)
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to config page")
+            return RedirectResponse(url="/", status_code=302)
     try:
         return await ConfigService.reset_config()
     except Exception as e:
@@ -61,10 +67,12 @@ class DeleteKeysRequest(BaseModel):
 
 @router.delete("/keys/{key_to_delete}", response_model=Dict[str, Any])
 async def delete_single_key(key_to_delete: str, request: Request):
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning(f"Unauthorized attempt to delete key: {key_to_delete}")
-        return RedirectResponse(url="/", status_code=302)
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning(f"Unauthorized attempt to delete key: {key_to_delete}")
+            return RedirectResponse(url="/", status_code=302)
     try:
         logger.info(f"Attempting to delete key: {key_to_delete}")
         result = await ConfigService.delete_key(key_to_delete)
@@ -87,10 +95,12 @@ async def delete_single_key(key_to_delete: str, request: Request):
 async def delete_selected_keys_route(
     delete_request: DeleteKeysRequest, request: Request
 ):
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized attempt to bulk delete keys")
-        return RedirectResponse(url="/", status_code=302)
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized attempt to bulk delete keys")
+            return RedirectResponse(url="/", status_code=302)
 
     if not delete_request.keys:
         logger.warning("Attempt to bulk delete keys with an empty list.")
@@ -115,10 +125,12 @@ async def delete_selected_keys_route(
 
 @router.get("/ui/models")
 async def get_ui_models(request: Request):
-    auth_token_cookie = request.cookies.get("auth_token")
-    if not auth_token_cookie or not verify_auth_token(auth_token_cookie):
-        logger.warning("Unauthorized access attempt to /api/config/ui/models")
-        raise HTTPException(status_code=403, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token_cookie = request.cookies.get("auth_token")
+        if not auth_token_cookie or not verify_auth_token(auth_token_cookie):
+            logger.warning("Unauthorized access attempt to /api/config/ui/models")
+            raise HTTPException(status_code=403, detail="Not authenticated")
 
     try:
         models = await ConfigService.fetch_ui_models()

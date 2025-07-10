@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     AUTO_DELETE_REQUEST_LOGS_ENABLED: bool = False
     AUTO_DELETE_REQUEST_LOGS_DAYS: int = 30
     SAFETY_SETTINGS: List[Dict[str, str]] = DEFAULT_SAFETY_SETTINGS
+    
+    # 開發模式配置
+    LOCALHOST_BYPASS_AUTH: bool = True  # localhost 開發環境跳過驗證
 
 
     def __init__(self, **kwargs):

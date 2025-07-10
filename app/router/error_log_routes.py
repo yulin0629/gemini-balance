@@ -17,7 +17,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.core.security import verify_auth_token
+from app.core.security import verify_auth_token, should_bypass_auth
 from app.log.logger import get_log_routes_logger
 from app.service.error_log import error_log_service
 
@@ -83,10 +83,12 @@ async def get_error_logs_api(
     Returns:
         ErrorLogListResponse: An object containing the list of logs (with error_code) and the total count.
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to error logs list")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to error logs list")
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         result = await error_log_service.process_get_error_logs(
@@ -127,12 +129,14 @@ async def get_error_log_detail_api(request: Request, log_id: int = Path(..., ge=
     """
     根据日志 ID 获取错误日志的详细信息 (包括 error_log 和 request_msg)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning(
-            f"Unauthorized access attempt to error log details for ID: {log_id}"
-        )
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning(
+                f"Unauthorized access attempt to error log details for ID: {log_id}"
+            )
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         log_details = await error_log_service.process_get_error_log_details(
@@ -158,10 +162,12 @@ async def delete_error_logs_bulk_api(
     """
     批量删除错误日志 (异步)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to bulk delete error logs")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to bulk delete error logs")
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     log_ids = payload.get("ids")
     if not log_ids:
@@ -210,10 +216,12 @@ async def delete_error_log_api(request: Request, log_id: int = Path(..., ge=1)):
     """
     删除单个错误日志 (异步)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning(f"Unauthorized access attempt to delete error log ID: {log_id}")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning(f"Unauthorized access attempt to delete error log ID: {log_id}")
+            raise HTTPException(status_code=401, detail="Not authenticated")
  
     try:
         success = await error_log_service.process_delete_error_log_by_id(log_id)
@@ -293,10 +301,12 @@ async def get_request_logs_api(
     Returns:
         RequestLogListResponse: 包含请求日志列表和总数的响应对象
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to request logs list")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to request logs list")
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         result = await error_log_service.process_get_request_logs(
@@ -343,12 +353,14 @@ async def get_request_log_detail_api(request: Request, log_id: int = Path(..., g
     """
     根据日志 ID 获取请求日志的详细信息
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning(
-            f"Unauthorized access attempt to request log details for ID: {log_id}"
-        )
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning(
+                f"Unauthorized access attempt to request log details for ID: {log_id}"
+            )
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
         log_details = await error_log_service.process_get_request_log_details(
@@ -374,10 +386,12 @@ async def delete_request_logs_bulk_api(
     """
     批量删除请求日志 (异步)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to bulk delete request logs")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to bulk delete request logs")
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     log_ids = payload.get("ids")
     if not log_ids:
@@ -403,10 +417,12 @@ async def delete_all_request_logs_api(request: Request):
     """
     删除所有请求日志 (异步)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning("Unauthorized access attempt to delete all request logs")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning("Unauthorized access attempt to delete all request logs")
+            raise HTTPException(status_code=401, detail="Not authenticated")
  
     try:
         deleted_count = await error_log_service.process_delete_all_request_logs()
@@ -425,10 +441,12 @@ async def delete_request_log_api(request: Request, log_id: int = Path(..., ge=1)
     """
     删除单个请求日志 (异步)
     """
-    auth_token = request.cookies.get("auth_token")
-    if not auth_token or not verify_auth_token(auth_token):
-        logger.warning(f"Unauthorized access attempt to delete request log ID: {log_id}")
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # localhost 環境跳過認證
+    if not should_bypass_auth(request):
+        auth_token = request.cookies.get("auth_token")
+        if not auth_token or not verify_auth_token(auth_token):
+            logger.warning(f"Unauthorized access attempt to delete request log ID: {log_id}")
+            raise HTTPException(status_code=401, detail="Not authenticated")
  
     try:
         success = await error_log_service.process_delete_request_log_by_id(log_id)

@@ -241,6 +241,8 @@ app/
 | `AUTO_DELETE_REQUEST_LOGS_ENABLED`| 可选，是否开启自动删除请求日志                               | `false`                                               |
 | `AUTO_DELETE_REQUEST_LOGS_DAYS` | 可选，自动删除多少天前的请求日志 (例如 1, 7, 30)           | `30`                                                  |
 | `SAFETY_SETTINGS`            | 可选，安全设置 (JSON 字符串格式)，用于配置内容安全阈值。示例值可能需要根据实际模型支持情况调整。 | `[{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"}, {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}]` |
+| **安全配置**                 |                                                          |                                                       |
+| `LOCALHOST_BYPASS_AUTH`      | 可选，允许 localhost 访问绕过身份验证。⚠️ **警告：在生产环境中必须设置为 `false`！** 此功能仅供本地开发使用。 | `true`                                                |
 | **TTS 相关**                 |                                                          |                                                       |
 | `TTS_MODEL`                  | 可选，TTS 模型名称                                           | `gemini-2.5-flash-preview-tts`                        |
 | `TTS_VOICE_NAME`             | 可选，TTS 语音名称                                           | `Zephyr`                                              |

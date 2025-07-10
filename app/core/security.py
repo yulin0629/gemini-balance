@@ -1,11 +1,28 @@
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from app.config.config import settings
 from app.log.logger import get_security_logger
 
 logger = get_security_logger()
+
+
+def should_bypass_auth(request: Request = None) -> bool:
+    """檢查是否應該跳過認證"""
+    if not settings.LOCALHOST_BYPASS_AUTH:
+        return False
+    
+    if request is None:
+        return False
+    
+    # 只檢查客戶端實際 IP，不檢查 Host header (避免安全風險)
+    if request.client:
+        client_host = request.client.host
+        if client_host in ["127.0.0.1", "::1", "localhost"]:
+            return True
+    
+    return False
 
 
 def verify_auth_token(token: str) -> bool:
@@ -88,3 +105,4 @@ class SecurityService:
             raise HTTPException(status_code=401, detail="Invalid key and invalid x-goog-api-key")
         
         return x_goog_api_key
+

@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from app.core.security import verify_auth_token
+from app.core.security import verify_auth_token, should_bypass_auth
 from app.scheduler.scheduled_tasks import start_scheduler, stop_scheduler
 from app.log.logger import get_scheduler_routes
 
@@ -17,6 +17,10 @@ router = APIRouter(
 )
 
 async def verify_token(request: Request):
+    # localhost 環境跳過認證
+    if should_bypass_auth(request):
+        return
+    
     auth_token = request.cookies.get("auth_token")
     if not auth_token or not verify_auth_token(auth_token):
         logger.warning("Unauthorized access attempt to scheduler API")

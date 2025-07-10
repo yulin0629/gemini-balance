@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.core.security import verify_auth_token
+from app.core.security import verify_auth_token, should_bypass_auth
 from app.log.logger import get_routes_logger
 from app.router import error_log_routes, gemini_routes, openai_routes, config_routes, scheduler_routes, stats_routes, version_routes, openai_compatiable_routes, vertex_express_routes
 from app.service.key.key_manager import get_key_manager_instance
@@ -52,6 +52,10 @@ def setup_page_routes(app: FastAPI) -> None:
     @app.get("/", response_class=HTMLResponse)
     async def auth_page(request: Request):
         """认证页面"""
+        # localhost 環境直接跳轉到配置頁面
+        if should_bypass_auth(request):
+            logger.debug("Bypassing auth, redirecting to config page")
+            return RedirectResponse(url="/config", status_code=302)
         return templates.TemplateResponse("auth.html", {"request": request})
 
     @app.post("/auth")
@@ -91,10 +95,12 @@ def setup_page_routes(app: FastAPI) -> None:
     async def keys_page(request: Request):
         """密钥管理页面"""
         try:
-            auth_token = request.cookies.get("auth_token")
-            if not auth_token or not verify_auth_token(auth_token):
-                logger.warning("Unauthorized access attempt to keys page")
-                return RedirectResponse(url="/", status_code=302)
+            # localhost 環境跳過認證
+            if not should_bypass_auth(request):
+                auth_token = request.cookies.get("auth_token")
+                if not auth_token or not verify_auth_token(auth_token):
+                    logger.warning("Unauthorized access attempt to keys page")
+                    return RedirectResponse(url="/", status_code=302)
 
             key_manager = await get_key_manager_instance()
             keys_status = await key_manager.get_keys_by_status()
@@ -127,10 +133,12 @@ def setup_page_routes(app: FastAPI) -> None:
     async def config_page(request: Request):
         """配置编辑页面"""
         try:
-            auth_token = request.cookies.get("auth_token")
-            if not auth_token or not verify_auth_token(auth_token):
-                logger.warning("Unauthorized access attempt to config page")
-                return RedirectResponse(url="/", status_code=302)
+            # localhost 環境跳過認證
+            if not should_bypass_auth(request):
+                auth_token = request.cookies.get("auth_token")
+                if not auth_token or not verify_auth_token(auth_token):
+                    logger.warning("Unauthorized access attempt to config page")
+                    return RedirectResponse(url="/", status_code=302)
                 
             logger.info("Config page accessed successfully")
             return templates.TemplateResponse("config_editor.html", {"request": request})
@@ -142,10 +150,12 @@ def setup_page_routes(app: FastAPI) -> None:
     async def logs_page(request: Request):
         """错误日志页面"""
         try:
-            auth_token = request.cookies.get("auth_token")
-            if not auth_token or not verify_auth_token(auth_token):
-                logger.warning("Unauthorized access attempt to logs page")
-                return RedirectResponse(url="/", status_code=302)
+            # localhost 環境跳過認證
+            if not should_bypass_auth(request):
+                auth_token = request.cookies.get("auth_token")
+                if not auth_token or not verify_auth_token(auth_token):
+                    logger.warning("Unauthorized access attempt to logs page")
+                    return RedirectResponse(url="/", status_code=302)
                 
             logger.info("Logs page accessed successfully")
             return templates.TemplateResponse("error_logs.html", {"request": request})
@@ -180,10 +190,12 @@ def setup_api_stats_routes(app: FastAPI) -> None:
     async def api_stats_details(request: Request, period: str):
         """获取指定时间段内的 API 调用详情"""
         try:
-            auth_token = request.cookies.get("auth_token")
-            if not auth_token or not verify_auth_token(auth_token):
-                logger.warning("Unauthorized access attempt to API stats details")
-                return {"error": "Unauthorized"}, 401
+            # localhost 環境跳過認證
+            if not should_bypass_auth(request):
+                auth_token = request.cookies.get("auth_token")
+                if not auth_token or not verify_auth_token(auth_token):
+                    logger.warning("Unauthorized access attempt to API stats details")
+                    return {"error": "Unauthorized"}, 401
 
             logger.info(f"Fetching API call details for period: {period}")
             stats_service = StatsService()
