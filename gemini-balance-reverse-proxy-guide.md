@@ -1,965 +1,500 @@
-# Gemini Balance 反向代理設置指南
+# Gemini Balance 智能代理系統使用指南
 
-本指南將教你如何設置本地反向代理，讓應用程式以為在連接 Google Gemini API (`https://generativelanguage.googleapis.com/`)，但實際上請求會被轉發到你的 Gemini Balance 服務。
+本指南說明如何使用已建立的 WSL nginx 智能路由系統，該系統能夠：
+- 將 **gemini-2.5-pro** 請求智能路由到本地 Gemini Balance 服務
+- 將**其他模型**請求透明代理到 Google API
+- 同時支援 Gemini 原生格式和 OpenAI 相容格式
+- 讓 Windows 和 WSL 應用程式無縫使用代理服務
 
 ## 目錄
-- [使用場景](#使用場景)
-- [OpenAI 相容格式支援](#openai-相容格式支援)
-- [前置需求](#前置需求)
-- [快速設置](#快速設置)
-- [詳細步驟](#詳細步驟)
-- [使用方法](#使用方法)
-- [管理腳本](#管理腳本)
-- [疑難排解](#疑難排解)
-- [安全注意事項](#安全注意事項)
+- [系統架構概覽](#系統架構概覽)
+- [Windows 應用程式支援](#windows-應用程式支援)
+- [SSL 證書信任設定](#ssl-證書信任設定)
+- [API 使用方法](#api-使用方法)
+- [管理工具](#管理工具)
+- [測試與驗證](#測試與驗證)
+- [故障排除](#故障排除)
+- [進階配置](#進階配置)
 
-## 使用場景
+## 系統架構概覽
 
-- 開發環境中測試 Gemini API
-- 使用 Gemini Balance 服務管理 API 配額
-- 避免直接暴露真實的 Google API 密鑰
-- 本地開發不想修改應用程式代碼
+### 智能路由機制
 
-## OpenAI 相容格式支援
+當前系統使用 WSL nginx 實現智能路由，具有以下特性：
 
-除了 Gemini 原生格式外，透過反向代理設置，你還可以使用 OpenAI 相容格式來呼叫 Gemini API。這對於已經使用 OpenAI SDK 或格式的應用程式特別有用。
-
-**端點對應：**
-- Gemini 原生格式：`/v1beta/models/{model}:generateContent`
-- OpenAI 相容格式：`/v1beta/chat/completions` → 自動重寫為 `/hf/v1/chat/completions`
-
-**認證方式差異：**
-- Gemini 原生：使用 `x-goog-api-key` header
-- OpenAI 相容：使用 `Authorization: Bearer` header
-
-## 前置需求
-
-### Linux / WSL2
-- Ubuntu/Debian 系統（WSL2 也可以）
-- Gemini Balance 服務已運行（預設端口 8000，可自定義）
-- sudo 權限
-
-### Windows
-- Windows 10/11
-- Gemini Balance 服務已運行（預設端口 8000，可自定義）
-- 管理員權限
-- Chocolatey 或 Scoop 包管理器（用於安裝工具）
-
-
-## 快速設置
-
-### Linux / WSL2
-```bash
-# 1. 安裝必要套件
-sudo apt update && sudo apt install -y nginx
-
-# 2. 按照下方詳細步驟進行設置
-
-# 3. 測試（使用自簽名證書需要加 -k）
-curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
-  -H "Content-Type: application/json" \
-  -H "x-goog-api-key: YOUR_AUTH_TOKEN" \
-  -d '{"contents": [{"role": "user", "parts": [{"text": "Hello!"}]}]}'
+```
+應用程式請求 → WSL nginx (443) → 智能路由決策
+                                    ↓
+├─ gemini-2.5-pro → localhost:9527 (Gemini Balance)
+├─ OpenAI 格式 → localhost:9527 (轉換處理)
+└─ 其他模型 → generativelanguage.googleapis.com (Google API)
 ```
 
-### Windows
-```powershell
-# 1. 安裝 mkcert 和下載 nginx
-# 使用 Chocolatey
-choco install mkcert -y
-# 或使用 Scoop
-scoop install mkcert
+### WSL 2 網路共用機制
 
-# 2. 下載 nginx for Windows
-# 從 http://nginx.org/en/download.html 下載並解壓到 C:\nginx
+- **端口共用**：WSL nginx 監聽 `0.0.0.0:443`，Windows 應用程式的請求自動轉發到 WSL
+- **統一服務**：Windows 和 WSL 共用同一個 nginx 實例，避免配置重複和端口衝突
+- **透明代理**：應用程式無需修改，直接使用 `https://generativelanguage.googleapis.com/`
 
-# 3. 按照下方詳細步驟進行設置
+### 使用場景
 
-# 4. 測試
-Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" `
-  -Method Post -Headers @{"Content-Type"="application/json"; "x-goog-api-key"="YOUR_AUTH_TOKEN"} `
-  -Body '{"contents":[{"role":"user","parts":[{"text":"Hello!"}]}]}'
-```
+- **開發環境**：本地測試 Gemini API 而不消耗 Google 配額
+- **生產環境**：智能分流，重度模型使用本地服務，輕量模型使用官方 API
+- **應用遷移**：既有應用程式無需修改程式碼，直接獲得路由功能
+- **成本最佳化**：gemini-2.5-pro 使用免費本地服務，其他模型按需使用付費 API
 
-## 詳細步驟
+## Windows 應用程式支援
 
-選擇你的平台：
-- [Linux / WSL2 設置](#linux--wsl2-設置)
-- [Windows 設置](#windows-設置)
+### 核心配置需求
 
----
+要讓 Windows 應用程式（如 VSCode、PowerShell、Python 腳本）正常使用代理服務，需要完成以下配置：
 
-## Linux / WSL2 設置
+1. **Hosts 檔案設定**：已通過管理腳本自動配置
+2. **SSL 證書信任**：需要匯入 mkcert 根 CA 證書
+3. **應用程式重啟**：完成證書配置後重啟相關應用
 
-### 1. 確認 Gemini Balance 服務
-
-首先確認你的 Gemini Balance 運行在哪個端口：
-```bash
-# Docker 用戶
-docker ps | grep gemini-balance
-
-# 或檢查 docker-compose.yml
-grep -A2 "ports:" docker-compose.yml
-
-# 預設應該是 8000:8000
-```
-
-### 2. 安裝 Nginx
-
-```bash
-sudo apt update
-sudo apt install -y nginx
-```
-
-### 3. 生成 SSL 證書
-
-#### 選項 A：自簽名證書（快速）
-```bash
-sudo mkdir -p /etc/nginx/ssl
-sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout /etc/nginx/ssl/googleapis.key \
-  -out /etc/nginx/ssl/googleapis.crt \
-  -subj "/C=US/ST=State/L=City/O=Organization/CN=generativelanguage.googleapis.com"
-```
-
-#### 選項 B：使用 mkcert（推薦）
-```bash
-# 安裝 mkcert
-curl -L https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64 -o mkcert
-chmod +x mkcert
-sudo mv mkcert /usr/local/bin/
-
-# 設置本地 CA
-mkcert -install
-
-# 生成證書
-mkcert generativelanguage.googleapis.com
-sudo mv generativelanguage.googleapis.com*.pem /etc/nginx/ssl/
-```
-
-**重要：設置 Node.js 信任 mkcert CA**
-
-如果你使用基於 Node.js 的工具（如 gemini-cli，實際執行命令為 `gemini`），需要額外設置：
-
-```bash
-# 將 mkcert CA 路徑加入環境變數
-echo "export NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.bashrc
-echo "export NODE_EXTRA_CA_CERTS=\"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.zshrc
-echo "set -x NODE_EXTRA_CA_CERTS \"$(mkcert -CAROOT)/rootCA.pem\"" >> ~/.config/fish/config.fish
-
-# 立即生效
-source ~/.bashrc  # 如果使用 bash
-source ~/.zshrc  # 如果使用 zsh
-source ~/.config/fish/config.fish  # 如果使用 fish
-```
-
-### 4. 配置 Nginx
-
-創建配置文件時，記得替換端口號：
-
-```bash
-# 創建配置文件
-sudo tee /etc/nginx/sites-available/googleapis-proxy > /dev/null << EOF
-server {
-    listen 443 ssl;
-    server_name generativelanguage.googleapis.com;
-    
-    # 如果使用自簽名證書
-    ssl_certificate /etc/nginx/ssl/googleapis.crt;
-    ssl_certificate_key /etc/nginx/ssl/googleapis.key;
-    # 如果使用 mkcert 證書（取消下面的註釋並註釋上面兩行）
-    # ssl_certificate /etc/nginx/ssl/generativelanguage.googleapis.com.pem;
-    # ssl_certificate_key /etc/nginx/ssl/generativelanguage.googleapis.com-key.pem;
-    
-    # SSL 配置
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    
-    # 重寫 OpenAI 相容端點 (v1beta 路徑)
-    location /v1beta/chat/completions {
-        rewrite ^/v1beta/chat/completions$ /hf/v1/chat/completions break;
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Access-Control-Allow-Origin "*";
-        proxy_set_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-        proxy_set_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization";
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-    
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # 處理 CORS
-        proxy_set_header Access-Control-Allow-Origin "*";
-        proxy_set_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-        proxy_set_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization";
-        
-        # 超時設置
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-}
-
-# HTTP 配置（可選，用於不支持 HTTPS 的場景）
-server {
-    listen 80;
-    server_name generativelanguage.googleapis.com;
-    
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-```
-
-啟用配置：
-```bash
-sudo ln -s /etc/nginx/sites-available/googleapis-proxy /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-### 5. 修改 hosts 文件
-
-```bash
-# 備份原始 hosts
-sudo cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S)
-
-# 添加解析記錄
-echo "127.0.0.1 generativelanguage.googleapis.com" | sudo tee -a /etc/hosts
-```
-
----
-
-## Windows 設置
-
-### 1. 確認 Gemini Balance 服務
-
-確認你的 Gemini Balance 運行在哪個端口：
-```powershell
-# Docker 用戶
-docker ps | Select-String gemini-balance
-
-# 檢查端口（預設應該是 8000，如果使用 docker-compose.reverse-proxy.yml 則是 9527）
-```
-
-### 2. 安裝必要工具
-
-#### 安裝 mkcert（生成受信任的 SSL 證書）
-```powershell
-# 使用 Chocolatey
-choco install mkcert -y
-
-# 或使用 Scoop
-scoop install mkcert
-```
-
-#### 下載 nginx for Windows
-- 從 [nginx.org](http://nginx.org/en/download.html) 下載 Windows 版本
-- 解壓到 `C:\nginx`
-
-### 3. 生成 SSL 證書
-
-```powershell
-# 安裝 CA 到 Windows 證書存儲
-mkcert -install
-
-# 創建證書目錄
-mkdir C:\nginx\ssl
-
-# 生成證書
-cd C:\nginx\ssl
-mkcert generativelanguage.googleapis.com
-```
-
-這會生成兩個文件：
-- `generativelanguage.googleapis.com.pem`（證書）
-- `generativelanguage.googleapis.com-key.pem`（私鑰）
-
-### 4. 配置 nginx
-
-創建 `C:\nginx\conf\nginx.conf`：
-
-```nginx
-worker_processes 1;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    server {
-        listen 443 ssl;
-        server_name generativelanguage.googleapis.com;
-        
-        # SSL 證書（使用 mkcert 生成的）
-        ssl_certificate C:/nginx/ssl/generativelanguage.googleapis.com.pem;
-        ssl_certificate_key C:/nginx/ssl/generativelanguage.googleapis.com-key.pem;
-        
-        # SSL 設定
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!MD5;
-        ssl_prefer_server_ciphers on;
-        
-        # 日誌
-        access_log logs/googleapis_access.log;
-        error_log logs/googleapis_error.log;
-        
-        # 重寫 OpenAI 相容端點 (v1beta 路徑)
-        location /v1beta/chat/completions {
-            rewrite ^/v1beta/chat/completions$ /v1/chat/completions break;
-            proxy_pass http://localhost:8000;  # 根據實際端口調整
-            
-            # 傳遞所有原始 headers
-            proxy_pass_request_headers on;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        location / {
-            # 代理到 Gemini Balance
-            proxy_pass http://localhost:8000;  # 根據實際端口調整
-            
-            # 傳遞所有原始 headers
-            proxy_pass_request_headers on;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # 支援串流
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 300s;
-            proxy_connect_timeout 75s;
-            
-            # SSE 支援
-            proxy_set_header Connection '';
-            proxy_http_version 1.1;
-            chunked_transfer_encoding off;
-        }
-    }
-}
-```
-
-**注意**：如果你的 Gemini Balance 運行在 9527 端口，請將所有 `localhost:8000` 改為 `localhost:9527`。
-
-### 5. 修改 hosts 文件
-
-以管理員身份運行 PowerShell：
-
-```powershell
-# 備份原始 hosts
-Copy-Item "C:\Windows\System32\drivers\etc\hosts" "C:\Windows\System32\drivers\etc\hosts.backup.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-
-# 添加解析記錄
-Add-Content -Path "C:\Windows\System32\drivers\etc\hosts" -Value "`n127.0.0.1 generativelanguage.googleapis.com"
-
-# 刷新 DNS 緩存
-ipconfig /flushdns
-```
-
-### 6. 設置 Node.js 環境變量
-
-對於 Node.js 應用（如 VSCode 擴展），需要信任 mkcert CA：
-
-```powershell
-# 獲取 mkcert CA 路徑
-$caPath = & mkcert -CAROOT
-$caFile = "$caPath\rootCA.pem"
-
-# 設置環境變量（系統級別，需要管理員權限）
-[Environment]::SetEnvironmentVariable("NODE_EXTRA_CA_CERTS", $caFile, "Machine")
-
-# 設置用戶級別（當前用戶）
-[Environment]::SetEnvironmentVariable("NODE_EXTRA_CA_CERTS", $caFile, "User")
-```
-
-**重要**：設置環境變量後，需要重啟應用程序（如 VSCode）才能生效。
-
-### 7. 啟動 nginx
-
-```powershell
-# 啟動 nginx
-cd C:\nginx
-Start-Process nginx.exe -WindowStyle Hidden
-
-# 或直接運行
-C:\nginx\nginx.exe
-
-# 檢查是否運行成功
-tasklist | findstr nginx
-```
-
-## 使用方法
-
-### 查找你的認證 Token
-
-從 Gemini Balance 的 `.env` 文件獲取：
-```bash
-# 查看 AUTH_TOKEN
-grep AUTH_TOKEN ./gemini-balance/.env
-```
-
-### API 調用範例
-
-#### Linux / WSL2
+### 支援的 API 格式
 
 **Gemini 原生格式：**
-```bash
-# 替換 YOUR_AUTH_TOKEN 為你的實際 token
-curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
-  -H "Content-Type: application/json" \
-  -H "x-goog-api-key: YOUR_AUTH_TOKEN" \
-  -d '{
-    "contents": [{
-      "role": "user",
-      "parts": [{
-        "text": "你的問題"
-      }]
-    }]
-  }'
+```http
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent
+Content-Type: application/json
+x-goog-api-key: YOUR_AUTH_TOKEN
 ```
 
 **OpenAI 相容格式：**
-```bash
-# 使用 OpenAI 格式呼叫 Gemini
-curl -X POST "https://generativelanguage.googleapis.com/v1beta/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
-  -d '{
-    "model": "gemini-2.5-flash",
-    "messages": [{
-      "role": "user",
-      "content": "你的問題"
-    }]
-  }'
+```http
+POST https://generativelanguage.googleapis.com/v1beta/chat/completions
+Content-Type: application/json
+Authorization: Bearer YOUR_AUTH_TOKEN
 ```
 
-#### Windows PowerShell
+系統會自動將 OpenAI 格式請求重寫為 `/hf/v1/chat/completions` 並轉發到本地服務處理。
 
-**Gemini 原生格式：**
+## SSL 證書信任設定
+
+### 問題背景
+
+WSL nginx 使用 mkcert 生成的自簽名證書，Windows 應用程式預設不信任這些證書，會出現 `unable to verify the first certificate` 錯誤。
+
+### 解決方案：匯入 mkcert 根 CA 證書
+
+**方法 1：圖形介面匯入（推薦）**
+
+1. 雙擊 `C:\Users\yician\mkcert-rootCA.pem`
+2. 點擊 **「安裝憑證」**
+3. 選擇 **「本機電腦」**（需要管理員權限）或 **「目前使用者」**
+4. 選擇 **「將所有憑證放入以下的存放區」**
+5. 點擊 **「瀏覽」** → 選擇 **「受信任的根憑證授權單位」**
+6. 完成安裝
+
+**方法 2：PowerShell 匯入**
+
 ```powershell
-# 替換 YOUR_AUTH_TOKEN 為你的實際 token
+# 匯入到使用者證書存放區（不需要管理員權限）
+Import-Certificate -FilePath "C:\Users\yician\mkcert-rootCA.pem" -CertStoreLocation Cert:\CurrentUser\Root
+
+# 確認匯入成功
+Get-ChildItem Cert:\CurrentUser\Root | Where-Object { $_.Subject -match "mkcert" }
+```
+
+**方法 3：使用 certmgr.msc**
+
+1. **Win + R** → 輸入 `certmgr.msc`
+2. 展開 **「受信任的根憑證授權單位」** → **「憑證」**
+3. 右鍵點擊 → **「所有工作」** → **「匯入」**
+4. 選擇 `C:\Users\yician\mkcert-rootCA.pem`
+
+### Node.js 應用程式額外設定
+
+對於 VSCode 等基於 Node.js 的應用程式，還需要設定環境變數：
+
+```powershell
+# 設定 Node.js 信任 mkcert CA
+[Environment]::SetEnvironmentVariable("NODE_EXTRA_CA_CERTS", "C:\Users\yician\mkcert-rootCA.pem", "User")
+
+# 重新啟動 VSCode 或其他 Node.js 應用程式
+```
+
+
+## API 使用方法
+
+### 獲取認證 Token
+
+從 Gemini Balance 的 `.env` 檔案獲取 `AUTH_TOKEN`：
+
+```bash
+# 查看可用的認證 token
+grep -E "(AUTH_TOKEN|ALLOWED_TOKENS)" /home/yician/github/gemini-balance/.env
+```
+
+### 使用範例
+
+**Gemini 原生格式（PowerShell）：**
+
+```powershell
+# gemini-2.5-pro → 本地服務
+Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent" `
+  -Method Post `
+  -Headers @{
+    "Content-Type" = "application/json"
+    "x-goog-api-key" = "YOUR_AUTH_TOKEN"
+  } `
+  -Body '{"contents":[{"parts":[{"text":"你好！請介紹你自己。"}]}]}'
+
+# gemini-2.5-flash → Google API
 Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" `
   -Method Post `
   -Headers @{
     "Content-Type" = "application/json"
     "x-goog-api-key" = "YOUR_AUTH_TOKEN"
   } `
-  -Body '{"contents":[{"role":"user","parts":[{"text":"你的問題"}]}]}' `
-  -SkipCertificateCheck
+  -Body '{"contents":[{"parts":[{"text":"你好！請介紹你自己。"}]}]}'
 ```
 
-**OpenAI 相容格式：**
+**OpenAI 相容格式（PowerShell）：**
+
 ```powershell
-# 使用 OpenAI 格式呼叫 Gemini
+# 使用 OpenAI 格式呼叫 Gemini → 本地服務
 Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/chat/completions" `
   -Method Post `
   -Headers @{
     "Content-Type" = "application/json"
     "Authorization" = "Bearer YOUR_AUTH_TOKEN"
   } `
-  -Body '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"你的問題"}]}' `
-  -SkipCertificateCheck
+  -Body '{"model":"gemini-2.5-pro","messages":[{"role":"user","content":"你好！請介紹你自己。"}]}'
 ```
 
-### Node.js 應用程式
+**Python 範例：**
 
-如果使用 mkcert 生成的證書，需要設置 Node.js 信任 mkcert CA（參見上方「設置 Node.js 信任 mkcert CA」部分）。
-
-如果已經按照上述步驟設置但仍有問題，可以臨時使用：
-```bash
-# 臨時設置（僅當前會話）
-export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
-
-# 或者使用自簽名證書時的臨時解決方案（不推薦）
-NODE_TLS_REJECT_UNAUTHORIZED=0 gemini [你的命令]
-```
-
-### Python 應用程式
-
-**Gemini 原生格式：**
 ```python
 import requests
-import urllib3
 
-# 禁用 SSL 警告（開發環境）
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+# Gemini 原生格式
 response = requests.post(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
     headers={
         "Content-Type": "application/json",
         "x-goog-api-key": "YOUR_AUTH_TOKEN"
     },
     json={
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": "Hello!"}]
-        }]
+        "contents": [{"parts": [{"text": "你好！請介紹你自己。"}]}]
     },
-    verify=False  # 開發環境忽略證書
+    verify=False  # 如果還沒完成證書設定
 )
-```
 
-**OpenAI 相容格式：**
-```python
-# 使用 OpenAI SDK
+# OpenAI 相容格式
 from openai import OpenAI
-
-# 設置 base_url 指向代理服務器
 client = OpenAI(
     api_key="YOUR_AUTH_TOKEN",
-    base_url="https://generativelanguage.googleapis.com/v1beta",
-    http_client=httpx.Client(verify=False)  # 開發環境忽略證書
+    base_url="https://generativelanguage.googleapis.com/v1beta"
 )
 
 response = client.chat.completions.create(
-    model="gemini-2.5-flash",
-    messages=[
-        {"role": "user", "content": "Hello!"}
-    ]
-)
-
-# 或使用 requests
-response = requests.post(
-    "https://generativelanguage.googleapis.com/v1beta/chat/completions",
-    headers={
-        "Content-Type": "application/json",
-        "Authorization": "Bearer YOUR_AUTH_TOKEN"
-    },
-    json={
-        "model": "gemini-2.5-flash",
-        "messages": [{"role": "user", "content": "Hello!"}]
-    },
-    verify=False  # 開發環境忽略證書
+    model="gemini-2.5-pro",
+    messages=[{"role": "user", "content": "你好！請介紹你自己。"}]
 )
 ```
 
-## 管理腳本
+## 管理工具
 
-### Linux / WSL2 腳本
+系統提供了完整的 PowerShell 管理工具用於 Windows 環境。
 
-#### 1. 切換開關腳本
+### Windows Hosts 檔案管理
 
-創建 `toggle-google-api-proxy.sh`：
-```bash
-#!/bin/bash
-if grep -q "^127.0.0.1 generativelanguage.googleapis.com" /etc/hosts; then
-    echo "關閉代理..."
-    sudo sed -i 's/^127.0.0.1 generativelanguage.googleapis.com/# 127.0.0.1 generativelanguage.googleapis.com/' /etc/hosts
-    echo "✓ 代理已關閉 - 現在連接到真實的 Google API"
-else
-    echo "開啟代理..."
-    sudo sed -i 's/^# 127.0.0.1 generativelanguage.googleapis.com/127.0.0.1 generativelanguage.googleapis.com/' /etc/hosts
-    echo "✓ 代理已開啟 - 現在連接到 Gemini Balance (localhost:8000)"
-fi
-```
+**位置：** `local-proxy-management/scripts/windows/manage-windows-hosts.ps1`
 
-#### 2. 更新端口腳本
-
-如果需要更改端口，創建 `update-proxy-port.sh`：
-```bash
-#!/bin/bash
-if [ -z "$1" ]; then
-    echo "用法: $0 <新端口號>"
-    exit 1
-fi
-
-NEW_PORT=$1
-echo "更新端口從 8000 到 $NEW_PORT..."
-sudo sed -i "s/:8000/:$NEW_PORT/g" /etc/nginx/sites-available/googleapis-proxy
-sudo nginx -t && sudo systemctl reload nginx
-echo "✓ 端口已更新！"
-```
-
-#### 3. 完整移除腳本
-
-創建 `remove-google-api-proxy-completely.sh`：
-```bash
-#!/bin/bash
-# 還原 hosts
-if ls /etc/hosts.backup.* 1> /dev/null 2>&1; then
-    latest_backup=$(ls -t /etc/hosts.backup.* | head -1)
-    sudo cp "$latest_backup" /etc/hosts
-fi
-
-# 移除 nginx 配置
-sudo rm -f /etc/nginx/sites-enabled/googleapis-proxy
-sudo rm -f /etc/nginx/sites-available/googleapis-proxy
-
-# 移除證書
-sudo rm -rf /etc/nginx/ssl/googleapis.*
-sudo rm -rf /etc/nginx/ssl/generativelanguage.googleapis.com*
-
-# 重啟 nginx
-sudo systemctl restart nginx
-echo "代理已完全移除！"
-```
-
-### Windows 腳本
-
-#### 1. 啟動/停止 nginx
-
-創建 `C:\nginx\start-nginx.ps1`：
 ```powershell
-# 啟動 nginx
-$nginxPath = "C:\nginx\nginx.exe"
-if (Test-Path $nginxPath) {
-    Start-Process $nginxPath -WindowStyle Hidden
-    Write-Host "nginx 已啟動" -ForegroundColor Green
-} else {
-    Write-Host "找不到 nginx.exe" -ForegroundColor Red
-}
+# 啟用代理（將 generativelanguage.googleapis.com 指向 127.0.0.1）
+.\manage-windows-hosts.ps1 enable
+
+# 停用代理（還原正常 DNS 解析）
+.\manage-windows-hosts.ps1 disable
+
+# 查看目前狀態
+.\manage-windows-hosts.ps1 status
+
+# 自動切換（啟用⇄停用）
+.\manage-windows-hosts.ps1 toggle
 ```
 
-創建 `C:\nginx\stop-nginx.ps1`：
+功能特性：
+- 自動備份 hosts 檔案
+- 智能清理重複條目
+- 正確的 Windows CRLF 編碼
+- 自動 DNS 快取清理
+
+### API 測試工具
+
+**位置：** `local-proxy-management/scripts/windows/test-gemini-api.ps1`
+
 ```powershell
-# 停止 nginx
-$nginxProcess = Get-Process nginx -ErrorAction SilentlyContinue
-if ($nginxProcess) {
-    Stop-Process -Name nginx -Force
-    Write-Host "nginx 已停止" -ForegroundColor Yellow
-} else {
-    Write-Host "nginx 未運行" -ForegroundColor Gray
-}
+# 完整測試三個核心模型的路由
+.\test-gemini-api.ps1
+
+# 使用自定義 API key
+.\test-gemini-api.ps1 -ApiKey "YOUR_AUTH_TOKEN"
+
+# 顯示詳細錯誤訊息
+.\test-gemini-api.ps1 -Verbose
 ```
 
-創建 `C:\nginx\reload-nginx.ps1`：
+測試內容：
+- **gemini-2.5-pro**: 應路由到本地服務 (localhost:9527)
+- **gemini-2.5-flash**: 應路由到 Google API
+- **gemini-2.5-flash-lite-preview-06-17**: 應路由到 Google API
+
+功能特性：
+- 網路連接檢查和 DNS 解析驗證
+- 智能路由來源識別（通過回應時間分析）
+- SSL 證書驗證檢查
+- 詳細的錯誤診斷和建議
+
+## 測試與驗證
+
+### 基本連接測試
+
+在完成 SSL 證書設定後，可以進行以下測試：
+
 ```powershell
-# 重新載入 nginx 配置
-C:\nginx\nginx.exe -s reload
-Write-Host "nginx 配置已重新載入" -ForegroundColor Green
-```
-
-#### 2. 切換開關腳本
-
-創建 `C:\nginx\toggle-hosts.ps1`：
-```powershell
-# Toggle hosts file entry for generativelanguage.googleapis.com
-$hostsPath = "C:\Windows\System32\drivers\etc\hosts"
-$content = Get-Content $hostsPath
-
-# Check if the line is active or commented
-$activeLine = $content | Where-Object { $_ -match "^127\.0\.0\.1\s+generativelanguage\.googleapis\.com" }
-$commentedLine = $content | Where-Object { $_ -match "^#\s*127\.0\.0\.1\s+generativelanguage\.googleapis\.com" }
-
-if ($activeLine) {
-    # Comment out the active line
-    $content = $content -replace '^127\.0\.0\.1\s+generativelanguage\.googleapis\.com', '# 127.0.0.1 generativelanguage.googleapis.com'
-    Write-Host "Disabled proxy - Gemini Balance can now connect to real Google API" -ForegroundColor Yellow
-} elseif ($commentedLine) {
-    # Uncomment the line
-    $content = $content -replace '^#\s*127\.0\.0\.1\s+generativelanguage\.googleapis\.com', '127.0.0.1 generativelanguage.googleapis.com'
-    Write-Host "Enabled proxy - Requests will go through Caddy to Gemini Balance" -ForegroundColor Green
-} else {
-    Write-Host "No entry found for generativelanguage.googleapis.com" -ForegroundColor Red
-}
-
-# Save the file (requires admin rights)
-try {
-    $content | Set-Content $hostsPath
-    Write-Host "Successfully updated hosts file" -ForegroundColor Green
-    
-    # Flush DNS cache
-    ipconfig /flushdns | Out-Null
-    Write-Host "DNS cache flushed" -ForegroundColor Green
-} catch {
-    Write-Host "Error: Please run as Administrator" -ForegroundColor Red
-    Write-Host $_.Exception.Message
-}
-```
-
-#### 3. API 測試工具
-
-創建 `C:\nginx\test-proxy.ps1`：
-```powershell
-# 測試代理設置
-param(
-    [string]$Token = "YOUR_AUTH_TOKEN"
-)
-
-Write-Host "測試反向代理設置..." -ForegroundColor Cyan
-
-# 忽略 SSL 證書檢查（如果需要）
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-
 # 測試基本連接
-try {
-    $response = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models" `
-        -Headers @{"x-goog-api-key" = $Token}
-    Write-Host "✓ 基本連接成功" -ForegroundColor Green
-} catch {
-    Write-Host "✗ 連接失敗: $_" -ForegroundColor Red
-}
+$headers = @{"x-goog-api-key" = "YOUR_AUTH_TOKEN"}
+Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models" -Headers $headers
 
-# 測試 OpenAI 相容格式
-try {
-    $body = @{
-        model = "gemini-2.5-flash"
-        messages = @(@{role = "user"; content = "Hello"})
-    } | ConvertTo-Json
-    
-    $response = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/chat/completions" `
-        -Method Post `
-        -Headers @{
-            "Content-Type" = "application/json"
-            "Authorization" = "Bearer $Token"
-        } `
-        -Body $body
-    
-    Write-Host "✓ OpenAI 格式測試成功" -ForegroundColor Green
-} catch {
-    Write-Host "✗ OpenAI 格式測試失敗: $_" -ForegroundColor Red
-}
+# 測試 gemini-2.5-pro 路由（應路由到本地服務）
+Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent" `
+  -Method Post -Headers @{"Content-Type"="application/json"; "x-goog-api-key"="YOUR_AUTH_TOKEN"} `
+  -Body '{"contents":[{"parts":[{"text":"Hello!"}]}]}'
 ```
 
-創建 `C:\nginx\test-api.ps1` 用於詳細測試：
-```powershell
-# 完整 API 測試
-param(
-    [string]$Token = "YOUR_AUTH_TOKEN",
-    [switch]$TestMaxTokens
-)
+### 路由驗證
 
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   Gemini Balance API 測試" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
+測試不同模型的路由行為：
 
-# 測試函數
-function Test-API {
-    param(
-        [string]$Name,
-        [string]$Uri,
-        [hashtable]$Headers,
-        [string]$Body
-    )
-    
-    Write-Host "`n測試: $Name" -ForegroundColor Yellow
-    try {
-        $response = Invoke-WebRequest -Uri $Uri -Method Post `
-            -Headers $Headers -Body $Body -UseBasicParsing
-        
-        if ($response.StatusCode -eq 200) {
-            Write-Host "✓ 成功 (200)" -ForegroundColor Green
-            $content = $response.Content | ConvertFrom-Json
-            if ($content.choices) {
-                Write-Host "  回應: $($content.choices[0].message.content.Substring(0, 50))..." -ForegroundColor Gray
-            }
-        }
-    } catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
-        Write-Host "✗ 失敗 ($statusCode): $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
-
-# 測試不同場景
-$tests = @(
-    @{
-        Name = "基本請求"
-        Body = @{
-            model = "gemini-2.5-flash"
-            messages = @(@{role = "user"; content = "Say hello"})
-        }
-    }
-)
-
-if ($TestMaxTokens) {
-    $tests += @{
-        Name = "帶 max_tokens 的請求"
-        Body = @{
-            model = "gemini-2.5-flash"
-            messages = @(@{role = "user"; content = "Tell me a story"})
-            max_tokens = 100
-        }
-    }
-}
-
-foreach ($test in $tests) {
-    Test-API -Name $test.Name `
-        -Uri "https://generativelanguage.googleapis.com/v1beta/chat/completions" `
-        -Headers @{
-            "Content-Type" = "application/json"
-            "Authorization" = "Bearer $Token"
-        } `
-        -Body ($test.Body | ConvertTo-Json)
-}
-
-Write-Host "`n測試完成！" -ForegroundColor Cyan
-```
-
-## 疑難排解
-
-### 1. VSCode 擴展或其他應用返回錯誤
-
-**問題 A**：含有 `max_tokens` 參數的請求返回 500 錯誤
-**解決**：這是 Gemini Balance 的已知問題，需要修復 `response_handler.py` 文件中的 'parts' 錯誤。
-
-**問題 B**：SSL 證書錯誤（`Error: self signed certificate`）
-**解決**：
-1. 確認已運行 `mkcert -install`
-2. 檢查 NODE_EXTRA_CA_CERTS 環境變量是否設置正確
-3. 重啟應用程序（如 VSCode）
-4. Windows 檢查環境變量：
-   ```powershell
-   echo $env:NODE_EXTRA_CA_CERTS
-   # 或
-   [Environment]::GetEnvironmentVariable("NODE_EXTRA_CA_CERTS", "User")
-   ```
-
-**問題 C**：Authorization header 未傳遞（401 錯誤）
-**解決**：確保 nginx 配置包含 `proxy_pass_request_headers on;`
-
-### 2. 連接被拒絕
-
-**問題**：`Connection refused`
-
-#### Linux / WSL2 檢查：
 ```bash
-# 確認 Gemini Balance 運行中及端口
-docker ps | grep gemini-balance
+# 在 WSL 中檢查 nginx 日誌
+sudo tail -f /var/log/nginx/access.log
 
-# 確認 nginx 配置的端口正確
-grep proxy_pass /etc/nginx/sites-available/googleapis-proxy
+# 另一個終端進行 API 測試
+curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent" \
+  -H "Content-Type: application/json" \
+  -H "x-goog-api-key: YOUR_AUTH_TOKEN" \
+  -d '{"contents":[{"parts":[{"text":"Hello!"}]}]}' \
+  -k  # 如果證書尚未完全設定
+```
 
-# 確認 nginx 運行中
+你應該在日誌中看到：
+- gemini-2.5-pro 請求轉發到 `localhost:9527`
+- 其他模型請求轉發到 Google API
+
+### VSCode 擴充功能測試
+
+在完成 SSL 證書設定後：
+
+1. **重新啟動 VSCode**：讓應用程式重新載入證書設定
+2. **測試 Gemini 擴充功能**：嘗試使用 AI 功能，例如產生 commit 訊息
+3. **檢查錯誤**：如果仍有 SSL 錯誤，檢查以下項目：
+   - 證書是否正確匯入到受信任的根憑證授權單位
+   - `NODE_EXTRA_CA_CERTS` 環境變數是否正確設定
+   - VSCode 是否已完全重新啟動
+
+### 效能測試
+
+檢查系統效能和回應時間：
+
+```bash
+# 檢查 nginx 狀態
 sudo systemctl status nginx
 
-# 確認 hosts 設置
-grep generativelanguage.googleapis.com /etc/hosts
+# 檢查 Gemini Balance 服務狀態
+cd /home/yician/github/gemini-balance
+./deploy.sh status
+
+# 監控即時請求
+sudo tail -f /var/log/nginx/access.log
 ```
 
-#### Windows 檢查：
-```powershell
-# 確認 Gemini Balance 運行中及端口
-docker ps | Select-String gemini-balance
+## 故障排除
 
-# 確認 nginx 配置的端口正確
-Get-Content C:\nginx\conf\nginx.conf | Select-String "proxy_pass"
+### SSL 證書問題
 
-# 確認 nginx 運行中
-tasklist | findstr nginx
-# 或檢查端口
-netstat -an | findstr :443
+**問題：** `unable to verify the first certificate`
 
-# 確認 hosts 設置
-Get-Content C:\Windows\System32\drivers\etc\hosts | Select-String generativelanguage.googleapis.com
+**解決步驟：**
 
-# 測試 nginx 配置
-C:\nginx\nginx.exe -t
-```
+1. **確認證書檔案存在**：
+   ```powershell
+   Test-Path "C:\Users\yician\mkcert-rootCA.pem"
+   ```
 
-### 3. nginx 無法啟動
+2. **檢查證書是否已匯入**：
+   ```powershell
+   Get-ChildItem Cert:\CurrentUser\Root | Where-Object { $_.Subject -match "mkcert" }
+   ```
 
-**問題**：443 端口被占用或配置錯誤
+3. **重新匯入證書**：
+   ```powershell
+   Import-Certificate -FilePath "C:\Users\yician\mkcert-rootCA.pem" -CertStoreLocation Cert:\CurrentUser\Root
+   ```
 
-**解決**：
-```powershell
-# 檢查端口占用
-netstat -an | findstr :443
+4. **設定 Node.js 環境變數**：
+   ```powershell
+   [Environment]::SetEnvironmentVariable("NODE_EXTRA_CA_CERTS", "C:\Users\yician\mkcert-rootCA.pem", "User")
+   ```
 
-# 找出占用 443 端口的進程
-netstat -aon | findstr :443
-# 然後使用 PID 查找進程名
-tasklist | findstr "PID"
+### 路由問題
 
-# 測試配置文件
-C:\nginx\nginx.exe -t
+**問題：** API 請求沒有按預期路由
 
-# 查看錯誤日誌
-Get-Content C:\nginx\logs\error.log -Tail 20
-```
+**診斷步驟：**
 
-### 4. 401 未授權
+1. **檢查 hosts 檔案**：
+   ```powershell
+   Get-Content C:\Windows\System32\drivers\etc\hosts | Select-String generativelanguage.googleapis.com
+   ```
 
-**問題**：`Invalid key and missing x-goog-api-key header`
+2. **檢查 nginx 配置**：
+   ```bash
+   # 在 WSL 中
+   sudo nginx -t
+   sudo systemctl status nginx
+   cat /etc/nginx/sites-available/googleapis-proxy | grep -E "(location|proxy_pass)"
+   ```
 
-**解決**：
-- 檢查 Gemini Balance 的 `.env` 文件中的 `AUTH_TOKEN`
-- 確保使用正確的 header:
-  - Gemini 原生格式：`x-goog-api-key: YOUR_AUTH_TOKEN`
-  - OpenAI 相容格式：`Authorization: Bearer YOUR_AUTH_TOKEN`
-- 確認 token 在 `ALLOWED_TOKENS` 列表中
+3. **檢查服務狀態**：
+   ```bash
+   # 檢查 Gemini Balance 服務
+   cd /home/yician/github/gemini-balance
+   ./deploy.sh status
+   
+   # 檢查端口監聽
+   sudo netstat -tlnp | grep -E "(443|9527)"
+   ```
 
+### 連接問題
 
-## Docker 重要注意事項
+**問題：** `Connection refused` 或 `timeout`
 
-### 避免 DNS 循環問題
+**診斷步驟：**
 
-當你設置了 hosts 文件將 `generativelanguage.googleapis.com` 指向本地後，Docker 容器可能會繼承主機的 DNS 設置，導致 Gemini Balance 無法連接到真正的 Google API。
+1. **檢查服務狀態**：
+   ```bash
+   # WSL 中檢查 nginx
+   sudo systemctl status nginx
+   sudo netstat -tlnp | grep 443
+   
+   # 檢查 Gemini Balance
+   cd /home/yician/github/gemini-balance
+   ./deploy.sh status
+   docker ps | grep gemini-balance
+   ```
 
-**解決方案：使用自定義 DNS**
+2. **檢查網路連接**：
+   ```powershell
+   # Windows 中測試
+   Test-NetConnection -ComputerName generativelanguage.googleapis.com -Port 443
+   nslookup generativelanguage.googleapis.com
+   ```
+
+3. **重新啟動服務**：
+   ```bash
+   # 重啟 nginx
+   sudo systemctl restart nginx
+   
+   # 重啟 Gemini Balance
+   cd /home/yician/github/gemini-balance
+   ./deploy.sh restart
+   ```
+
+### 權限問題
+
+**問題：** `Access is denied` 或 `401 Unauthorized`
+
+**解決方法：**
+
+1. **檢查 API Token**：
+   ```bash
+   # 查看可用的 token
+   grep -E "(AUTH_TOKEN|ALLOWED_TOKENS)" /home/yician/github/gemini-balance/.env
+   ```
+
+2. **驗證 token 有效性**：
+   ```bash
+   # 直接測試本地服務
+   curl -X POST "http://localhost:9527/v1beta/models/gemini-2.5-pro:generateContent" \
+     -H "Content-Type: application/json" \
+     -H "x-goog-api-key: YOUR_AUTH_TOKEN" \
+     -d '{"contents":[{"parts":[{"text":"Hello!"}]}]}'
+   ```
+
+3. **更新配置**：
+   ```bash
+   # 修改 .env 檔案後重啟服務
+   cd /home/yician/github/gemini-balance
+   ./deploy.sh restart
+   ```
+
+## 進階配置
+
+### 翻查實際 nginx 配置
+
+目前使用的 WSL nginx 配置位於 `/etc/nginx/sites-available/googleapis-proxy`：
 
 ```bash
-# Docker run 命令
-docker run -d --name gemini-balance \
-  --dns 8.8.8.8 \
-  --dns 8.8.4.4 \
-  -p 8000:8000 \
-  -v $(pwd)/.env:/app/.env \
-  gemini-balance
+# 查看完整配置
+sudo cat /etc/nginx/sites-available/googleapis-proxy
 
-# 或在 docker-compose.yml 中
-services:
-  gemini-balance:
-    image: ghcr.io/snailyp/gemini-balance:latest
-    ports:
-      - "8000:8000"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    volumes:
-      - ./.env:/app/.env
+# 檢查關鍵路由規則
+sudo grep -A 5 -E "(location|proxy_pass)" /etc/nginx/sites-available/googleapis-proxy
 ```
 
-這樣確保容器內的 DNS 查詢會使用 Google 的公共 DNS，而不是受主機 hosts 文件影響。
+### 自定義路由規則
 
-## Docker Compose 範例
+如果需要修改路由規則，可以編輯 nginx 配置：
 
-如果你使用 Docker Compose，完整配置如下：
-```yaml
-services:
-  gemini-balance:
-    image: ghcr.io/snailyp/gemini-balance:latest
-    ports:
-      - "8000:8000"  # 主機端口:容器端口
-    dns:
-      - 8.8.8.8      # 使用 Google DNS
-      - 8.8.4.4      # 避免 hosts 文件影響
-    volumes:
-      - ./.env:/app/.env
+```bash
+# 備份配置
+sudo cp /etc/nginx/sites-available/googleapis-proxy /etc/nginx/sites-available/googleapis-proxy.backup
+
+# 編輯配置
+sudo nano /etc/nginx/sites-available/googleapis-proxy
+
+# 測試配置
+sudo nginx -t
+
+# 套用新配置
+sudo systemctl reload nginx
 ```
 
-記住：
-- nginx/Caddy 代理要指向**主機端口**（冒號前的數字）
-- 容器必須使用外部 DNS 才能正確連接到 Google API
+### 日誌與監控
 
-## 安全注意事項
+```bash
+# 即時監控 nginx 訪問日誌
+sudo tail -f /var/log/nginx/access.log
+
+# 查看 nginx 錯誤日誌
+sudo tail -f /var/log/nginx/error.log
+
+# 監控 Gemini Balance 日誌
+cd /home/yician/github/gemini-balance
+docker logs -f gemini-balance
+```
+
+### 效能最佳化
+
+如果需要最佳化效能，可以考慮：
+
+1. **調整 nginx worker 數量**
+2. **啟用 nginx 快取**
+3. **最佳化 Gemini Balance 配置**
+4. **監控系統資源使用**
+
+---
 
 ⚠️ **重要提醒**：
 - 這個設置僅適用於**開發環境**
-- 不要在生產環境使用自簽名證書
+- 生產環境中請使用正式的 SSL 證書
 - 定期更新證書避免過期
 - 保護好你的 API 密鑰和認證 Token
-
----
 
 💡 **提示**：完成設置後，你的應用程式無需修改任何代碼，就可以透過 Gemini Balance 使用 Google Gemini API！
