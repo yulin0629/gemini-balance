@@ -270,4 +270,4 @@ deploy-*.sh
 local-proxy-management/
 
 # Claude configuration
-CLAUDE.md
+CLAUDE.mdai-sessions/
